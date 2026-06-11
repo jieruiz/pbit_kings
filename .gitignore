@@ -1,0 +1,42 @@
+# Vivado generated directories
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.gen/
+*.jou
+*.log
+*.str
+*.wdb
+*.wdf
+*.pb
+*.dmp
+*.rpt
+*.vcd
+*.fst
+*.bak
+*.backup*
+
+# XSim generated files
+xsim.dir/
+xsim.ini
+xvlog.*
+xelab.*
+xsim.*
+webtalk.*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+
+# Keep source and project metadata
+!*.v
+!*.sv
+!*.xdc
+!*.xpr
+!*.tcl
+!*.md
+!*.svg

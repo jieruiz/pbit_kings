@@ -1,0 +1,15 @@
+#-----------------------------------------------------------
+# Vivado v2022.2 (64-bit)
+# SW Build 3671981 on Fri Oct 14 05:00:03 MDT 2022
+# IP Build 3669848 on Fri Oct 14 08:30:02 MDT 2022
+# Start of session at: Thu Jun 11 21:26:26 2026
+# Process ID: 10540
+# Current directory: D:/verilog_project/p_bit_kinggraph_new/github_upload_pbit_kinggraph/vivado_project
+# Command line: vivado.exe -gui_launcher_event rodinguilauncherevent6064 D:\verilog_project\p_bit_kinggraph_new\github_upload_pbit_kinggraph\vivado_project\p_bit_kinggraph_new.xpr
+# Log file: D:/verilog_project/p_bit_kinggraph_new/github_upload_pbit_kinggraph/vivado_project/vivado.log
+# Journal file: D:/verilog_project/p_bit_kinggraph_new/github_upload_pbit_kinggraph/vivado_project\vivado.jou
+# Running On: DESKTOP-8TDBED2, OS: Windows, CPU Frequency: 2496 MHz, CPU Physical cores: 8, Host memory: 16887 MB
+#-----------------------------------------------------------
+start_gui
+open_project D:/verilog_project/p_bit_kinggraph_new/github_upload_pbit_kinggraph/vivado_project/p_bit_kinggraph_new.xpr
+update_compile_order -fileset sources_1

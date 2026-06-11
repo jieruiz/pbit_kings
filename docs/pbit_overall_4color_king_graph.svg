@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 42px; font-weight: 700; fill: #172033; }
+      .subtitle { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 22px; fill: #5b6678; }
+      .section { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 22px; font-weight: 700; fill: #1d2b3f; }
+      .box-title { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 22px; font-weight: 700; fill: #12213a; }
+      .box-text { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 17px; fill: #2e3d52; }
+      .small { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 14px; fill: #536174; }
+      .tiny { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 12px; fill: #536174; }
+      .panel { fill: #f8fafc; stroke: #d3dce8; stroke-width: 2; rx: 14; }
+      .io { fill: #eef3f9; stroke: #8da0b7; stroke-width: 2.5; rx: 10; }
+      .ctrl { fill: #f0eaff; stroke: #8266cf; stroke-width: 2.5; rx: 10; }
+      .cfg { fill: #e8f6ef; stroke: #4e9b70; stroke-width: 2.5; rx: 10; }
+      .array { fill: #eaf3ff; stroke: #5c86ca; stroke-width: 2.5; rx: 10; }
+      .bias { fill: #ffeae6; stroke: #c95d54; stroke-width: 2.5; rx: 10; }
+      .out { fill: #e9fbf7; stroke: #3e9f8c; stroke-width: 2.5; rx: 10; }
+      .wire { stroke: #38475b; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .clock { stroke: #546172; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .config { stroke: #2f7a58; stroke-width: 3.5; fill: none; marker-end: url(#arrow-green); }
+      .phase { stroke: #7357cc; stroke-width: 3.5; fill: none; marker-end: url(#arrow-purple); }
+      .read { stroke: #2d8f7a; stroke-width: 3; fill: none; marker-end: url(#arrow-teal); }
+      .king-edge { stroke: #7a8797; stroke-width: 2.2; opacity: 0.75; }
+      .grid-line { stroke: #d2d9e4; stroke-width: 1.5; }
+      .node-label { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 13px; font-weight: 700; fill: #1d2b3f; text-anchor: middle; dominant-baseline: central; }
+      .legend-text { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 15px; fill: #2f3b4b; }
+      .label { font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 14px; fill: #2f3b4b; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#38475b"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#2f7a58"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#7357cc"/>
+    </marker>
+    <marker id="arrow-teal" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#2d8f7a"/>
+    </marker>
+  </defs>
+
+  <rect width="1920" height="1080" class="bg"/>
+  <text x="70" y="70" class="title">p-bit King Graph 电路整体结构</text>
+  <text x="72" y="108" class="subtitle">外部仅抽象为 Clock 与 I/O；内部展示配置、相位控制、四颜色 King graph 阵列和状态回读</text>
+
+  <!-- External I/O -->
+  <rect x="70" y="175" width="260" height="120" class="io"/>
+  <text x="105" y="215" class="box-title">Clock</text>
+  <text x="105" y="248" class="box-text">系统时钟</text>
+  <text x="105" y="276" class="small">驱动控制、阵列和随机更新</text>
+
+  <rect x="70" y="395" width="260" height="145" class="io"/>
+  <text x="105" y="435" class="box-title">I/O</text>
+  <text x="105" y="468" class="box-text">配置写入 / 控制命令</text>
+  <text x="105" y="496" class="small">节点 seed / init / clamp / bias</text>
+  <text x="105" y="520" class="small">边 prob / sign / valid</text>
+
+  <rect x="70" y="665" width="260" height="120" class="out"/>
+  <text x="105" y="705" class="box-title">I/O</text>
+  <text x="105" y="738" class="box-text">状态与结果回读</text>
+  <text x="105" y="766" class="small">run_done / sweep_cnt / spin_flat</text>
+
+  <!-- Internal control blocks -->
+  <rect x="455" y="165" width="330" height="145" class="ctrl"/>
+  <text x="490" y="205" class="box-title">相位控制器</text>
+  <text x="490" y="238" class="box-text">4-color update scheduler</text>
+  <text x="490" y="266" class="small">按 C0 → C1 → C2 → C3 依次启动</text>
+  <text x="490" y="290" class="small">生成 i0_level 退火强度</text>
+
+  <rect x="455" y="385" width="330" height="170" class="cfg"/>
+  <text x="490" y="425" class="box-title">配置与运行控制</text>
+  <text x="490" y="458" class="box-text">Command decode / config registers</text>
+  <text x="490" y="486" class="small">节点配置: seed, init, clamp, bias</text>
+  <text x="490" y="510" class="small">边配置: prob4, sign, valid</text>
+  <text x="490" y="534" class="small">控制: config_done, run_start, snapshot</text>
+
+  <rect x="455" y="665" width="330" height="120" class="out"/>
+  <text x="490" y="705" class="box-title">状态收集</text>
+  <text x="490" y="738" class="box-text">done / busy / spin_flat</text>
+  <text x="490" y="766" class="small">阵列运行完成后提供回读快照</text>
+
+  <!-- King graph array -->
+  <rect x="895" y="145" width="905" height="760" class="panel"/>
+  <text x="930" y="185" class="section">四颜色 King Graph p-bit 阵列</text>
+  <text x="930" y="216" class="small">实际工程为 19×19；此处用 7×7 示意四种颜色与 King 邻接</text>
+
+  <rect x="945" y="250" width="630" height="630" fill="#ffffff" stroke="#c7d2e0" stroke-width="2" rx="10"/>
+
+  <!-- King graph edges, node centers are x = 1010 + c*82, y = 315 + r*82 -->
+  <!-- horizontal/vertical/diagonal local edges for a 7x7 illustrative graph -->
+  <g>
+    <!-- Generate-like explicit lines for readability -->
+    <line x1="1010" y1="315" x2="1092" y2="315" class="king-edge"/><line x1="1092" y1="315" x2="1174" y2="315" class="king-edge"/><line x1="1174" y1="315" x2="1256" y2="315" class="king-edge"/><line x1="1256" y1="315" x2="1338" y2="315" class="king-edge"/><line x1="1338" y1="315" x2="1420" y2="315" class="king-edge"/><line x1="1420" y1="315" x2="1502" y2="315" class="king-edge"/>
+    <line x1="1010" y1="397" x2="1092" y2="397" class="king-edge"/><line x1="1092" y1="397" x2="1174" y2="397" class="king-edge"/><line x1="1174" y1="397" x2="1256" y2="397" class="king-edge"/><line x1="1256" y1="397" x2="1338" y2="397" class="king-edge"/><line x1="1338" y1="397" x2="1420" y2="397" class="king-edge"/><line x1="1420" y1="397" x2="1502" y2="397" class="king-edge"/>
+    <line x1="1010" y1="479" x2="1092" y2="479" class="king-edge"/><line x1="1092" y1="479" x2="1174" y2="479" class="king-edge"/><line x1="1174" y1="479" x2="1256" y2="479" class="king-edge"/><line x1="1256" y1="479" x2="1338" y2="479" class="king-edge"/><line x1="1338" y1="479" x2="1420" y2="479" class="king-edge"/><line x1="1420" y1="479" x2="1502" y2="479" class="king-edge"/>
+    <line x1="1010" y1="561" x2="1092" y2="561" class="king-edge"/><line x1="1092" y1="561" x2="1174" y2="561" class="king-edge"/><line x1="1174" y1="561" x2="1256" y2="561" class="king-edge"/><line x1="1256" y1="561" x2="1338" y2="561" class="king-edge"/><line x1="1338" y1="561" x2="1420" y2="561" class="king-edge"/><line x1="1420" y1="561" x2="1502" y2="561" class="king-edge"/>
+    <line x1="1010" y1="643" x2="1092" y2="643" class="king-edge"/><line x1="1092" y1="643" x2="1174" y2="643" class="king-edge"/><line x1="1174" y1="643" x2="1256" y2="643" class="king-edge"/><line x1="1256" y1="643" x2="1338" y2="643" class="king-edge"/><line x1="1338" y1="643" x2="1420" y2="643" class="king-edge"/><line x1="1420" y1="643" x2="1502" y2="643" class="king-edge"/>
+    <line x1="1010" y1="725" x2="1092" y2="725" class="king-edge"/><line x1="1092" y1="725" x2="1174" y2="725" class="king-edge"/><line x1="1174" y1="725" x2="1256" y2="725" class="king-edge"/><line x1="1256" y1="725" x2="1338" y2="725" class="king-edge"/><line x1="1338" y1="725" x2="1420" y2="725" class="king-edge"/><line x1="1420" y1="725" x2="1502" y2="725" class="king-edge"/>
+    <line x1="1010" y1="807" x2="1092" y2="807" class="king-edge"/><line x1="1092" y1="807" x2="1174" y2="807" class="king-edge"/><line x1="1174" y1="807" x2="1256" y2="807" class="king-edge"/><line x1="1256" y1="807" x2="1338" y2="807" class="king-edge"/><line x1="1338" y1="807" x2="1420" y2="807" class="king-edge"/><line x1="1420" y1="807" x2="1502" y2="807" class="king-edge"/>
+
+    <line x1="1010" y1="315" x2="1010" y2="397" class="king-edge"/><line x1="1010" y1="397" x2="1010" y2="479" class="king-edge"/><line x1="1010" y1="479" x2="1010" y2="561" class="king-edge"/><line x1="1010" y1="561" x2="1010" y2="643" class="king-edge"/><line x1="1010" y1="643" x2="1010" y2="725" class="king-edge"/><line x1="1010" y1="725" x2="1010" y2="807" class="king-edge"/>
+    <line x1="1092" y1="315" x2="1092" y2="397" class="king-edge"/><line x1="1092" y1="397" x2="1092" y2="479" class="king-edge"/><line x1="1092" y1="479" x2="1092" y2="561" class="king-edge"/><line x1="1092" y1="561" x2="1092" y2="643" class="king-edge"/><line x1="1092" y1="643" x2="1092" y2="725" class="king-edge"/><line x1="1092" y1="725" x2="1092" y2="807" class="king-edge"/>
+    <line x1="1174" y1="315" x2="1174" y2="397" class="king-edge"/><line x1="1174" y1="397" x2="1174" y2="479" class="king-edge"/><line x1="1174" y1="479" x2="1174" y2="561" class="king-edge"/><line x1="1174" y1="561" x2="1174" y2="643" class="king-edge"/><line x1="1174" y1="643" x2="1174" y2="725" class="king-edge"/><line x1="1174" y1="725" x2="1174" y2="807" class="king-edge"/>
+    <line x1="1256" y1="315" x2="1256" y2="397" class="king-edge"/><line x1="1256" y1="397" x2="1256" y2="479" class="king-edge"/><line x1="1256" y1="479" x2="1256" y2="561" class="king-edge"/><line x1="1256" y1="561" x2="1256" y2="643" class="king-edge"/><line x1="1256" y1="643" x2="1256" y2="725" class="king-edge"/><line x1="1256" y1="725" x2="1256" y2="807" class="king-edge"/>
+    <line x1="1338" y1="315" x2="1338" y2="397" class="king-edge"/><line x1="1338" y1="397" x2="1338" y2="479" class="king-edge"/><line x1="1338" y1="479" x2="1338" y2="561" class="king-edge"/><line x1="1338" y1="561" x2="1338" y2="643" class="king-edge"/><line x1="1338" y1="643" x2="1338" y2="725" class="king-edge"/><line x1="1338" y1="725" x2="1338" y2="807" class="king-edge"/>
+    <line x1="1420" y1="315" x2="1420" y2="397" class="king-edge"/><line x1="1420" y1="397" x2="1420" y2="479" class="king-edge"/><line x1="1420" y1="479" x2="1420" y2="561" class="king-edge"/><line x1="1420" y1="561" x2="1420" y2="643" class="king-edge"/><line x1="1420" y1="643" x2="1420" y2="725" class="king-edge"/><line x1="1420" y1="725" x2="1420" y2="807" class="king-edge"/>
+    <line x1="1502" y1="315" x2="1502" y2="397" class="king-edge"/><line x1="1502" y1="397" x2="1502" y2="479" class="king-edge"/><line x1="1502" y1="479" x2="1502" y2="561" class="king-edge"/><line x1="1502" y1="561" x2="1502" y2="643" class="king-edge"/><line x1="1502" y1="643" x2="1502" y2="725" class="king-edge"/><line x1="1502" y1="725" x2="1502" y2="807" class="king-edge"/>
+
+    <!-- Diagonal examples, enough to communicate king-neighborhood without over-darkening -->
+    <line x1="1010" y1="315" x2="1092" y2="397" class="king-edge"/><line x1="1092" y1="315" x2="1174" y2="397" class="king-edge"/><line x1="1174" y1="315" x2="1256" y2="397" class="king-edge"/><line x1="1256" y1="315" x2="1338" y2="397" class="king-edge"/><line x1="1338" y1="315" x2="1420" y2="397" class="king-edge"/><line x1="1420" y1="315" x2="1502" y2="397" class="king-edge"/>
+    <line x1="1092" y1="315" x2="1010" y2="397" class="king-edge"/><line x1="1174" y1="315" x2="1092" y2="397" class="king-edge"/><line x1="1256" y1="315" x2="1174" y2="397" class="king-edge"/><line x1="1338" y1="315" x2="1256" y2="397" class="king-edge"/><line x1="1420" y1="315" x2="1338" y2="397" class="king-edge"/><line x1="1502" y1="315" x2="1420" y2="397" class="king-edge"/>
+    <line x1="1010" y1="397" x2="1092" y2="479" class="king-edge"/><line x1="1092" y1="397" x2="1174" y2="479" class="king-edge"/><line x1="1174" y1="397" x2="1256" y2="479" class="king-edge"/><line x1="1256" y1="397" x2="1338" y2="479" class="king-edge"/><line x1="1338" y1="397" x2="1420" y2="479" class="king-edge"/><line x1="1420" y1="397" x2="1502" y2="479" class="king-edge"/>
+    <line x1="1092" y1="397" x2="1010" y2="479" class="king-edge"/><line x1="1174" y1="397" x2="1092" y2="479" class="king-edge"/><line x1="1256" y1="397" x2="1174" y2="479" class="king-edge"/><line x1="1338" y1="397" x2="1256" y2="479" class="king-edge"/><line x1="1420" y1="397" x2="1338" y2="479" class="king-edge"/><line x1="1502" y1="397" x2="1420" y2="479" class="king-edge"/>
+  </g>
+
+  <!-- Four-color nodes -->
+  <g>
+    <!-- C0 even/even: blue, C1 even/odd: green, C2 odd/even: amber, C3 odd/odd: red -->
+    <circle cx="1010" cy="315" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1010" y="315" class="node-label">C0</text>
+    <circle cx="1092" cy="315" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1092" y="315" class="node-label">C1</text>
+    <circle cx="1174" cy="315" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1174" y="315" class="node-label">C0</text>
+    <circle cx="1256" cy="315" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1256" y="315" class="node-label">C1</text>
+    <circle cx="1338" cy="315" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1338" y="315" class="node-label">C0</text>
+    <circle cx="1420" cy="315" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1420" y="315" class="node-label">C1</text>
+    <circle cx="1502" cy="315" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1502" y="315" class="node-label">C0</text>
+
+    <circle cx="1010" cy="397" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1010" y="397" class="node-label">C2</text>
+    <circle cx="1092" cy="397" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1092" y="397" class="node-label">C3</text>
+    <circle cx="1174" cy="397" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1174" y="397" class="node-label">C2</text>
+    <circle cx="1256" cy="397" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1256" y="397" class="node-label">C3</text>
+    <circle cx="1338" cy="397" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1338" y="397" class="node-label">C2</text>
+    <circle cx="1420" cy="397" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1420" y="397" class="node-label">C3</text>
+    <circle cx="1502" cy="397" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1502" y="397" class="node-label">C2</text>
+
+    <circle cx="1010" cy="479" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1010" y="479" class="node-label">C0</text>
+    <circle cx="1092" cy="479" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1092" y="479" class="node-label">C1</text>
+    <circle cx="1174" cy="479" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1174" y="479" class="node-label">C0</text>
+    <circle cx="1256" cy="479" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1256" y="479" class="node-label">C1</text>
+    <circle cx="1338" cy="479" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1338" y="479" class="node-label">C0</text>
+    <circle cx="1420" cy="479" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1420" y="479" class="node-label">C1</text>
+    <circle cx="1502" cy="479" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1502" y="479" class="node-label">C0</text>
+
+    <circle cx="1010" cy="561" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1010" y="561" class="node-label">C2</text>
+    <circle cx="1092" cy="561" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1092" y="561" class="node-label">C3</text>
+    <circle cx="1174" cy="561" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1174" y="561" class="node-label">C2</text>
+    <circle cx="1256" cy="561" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1256" y="561" class="node-label">C3</text>
+    <circle cx="1338" cy="561" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1338" y="561" class="node-label">C2</text>
+    <circle cx="1420" cy="561" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1420" y="561" class="node-label">C3</text>
+    <circle cx="1502" cy="561" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1502" y="561" class="node-label">C2</text>
+
+    <circle cx="1010" cy="643" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1010" y="643" class="node-label">C0</text>
+    <circle cx="1092" cy="643" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1092" y="643" class="node-label">C1</text>
+    <circle cx="1174" cy="643" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1174" y="643" class="node-label">C0</text>
+    <circle cx="1256" cy="643" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1256" y="643" class="node-label">C1</text>
+    <circle cx="1338" cy="643" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1338" y="643" class="node-label">C0</text>
+    <circle cx="1420" cy="643" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1420" y="643" class="node-label">C1</text>
+    <circle cx="1502" cy="643" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1502" y="643" class="node-label">C0</text>
+
+    <circle cx="1010" cy="725" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1010" y="725" class="node-label">C2</text>
+    <circle cx="1092" cy="725" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1092" y="725" class="node-label">C3</text>
+    <circle cx="1174" cy="725" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1174" y="725" class="node-label">C2</text>
+    <circle cx="1256" cy="725" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1256" y="725" class="node-label">C3</text>
+    <circle cx="1338" cy="725" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1338" y="725" class="node-label">C2</text>
+    <circle cx="1420" cy="725" r="22" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1420" y="725" class="node-label">C3</text>
+    <circle cx="1502" cy="725" r="22" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1502" y="725" class="node-label">C2</text>
+
+    <circle cx="1010" cy="807" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1010" y="807" class="node-label">C0</text>
+    <circle cx="1092" cy="807" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1092" y="807" class="node-label">C1</text>
+    <circle cx="1174" cy="807" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1174" y="807" class="node-label">C0</text>
+    <circle cx="1256" cy="807" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1256" y="807" class="node-label">C1</text>
+    <circle cx="1338" cy="807" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1338" y="807" class="node-label">C0</text>
+    <circle cx="1420" cy="807" r="22" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1420" y="807" class="node-label">C1</text>
+    <circle cx="1502" cy="807" r="22" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1502" y="807" class="node-label">C0</text>
+  </g>
+
+  <!-- Array legend -->
+  <rect x="1605" y="285" width="155" height="260" fill="#ffffff" stroke="#d3dce8" stroke-width="1.5" rx="8"/>
+  <text x="1625" y="315" class="box-title">颜色相位</text>
+  <circle cx="1630" cy="355" r="12" fill="#7aa7e8" stroke="#315f9f" stroke-width="2"/><text x="1655" y="360" class="legend-text">C0: 偶行偶列</text>
+  <circle cx="1630" cy="395" r="12" fill="#79c99a" stroke="#2b7a4e" stroke-width="2"/><text x="1655" y="400" class="legend-text">C1: 偶行奇列</text>
+  <circle cx="1630" cy="435" r="12" fill="#f2c66d" stroke="#a46d13" stroke-width="2"/><text x="1655" y="440" class="legend-text">C2: 奇行偶列</text>
+  <circle cx="1630" cy="475" r="12" fill="#f49a91" stroke="#a9473f" stroke-width="2"/><text x="1655" y="480" class="legend-text">C3: 奇行奇列</text>
+  <text x="1625" y="522" class="small">每次只更新一种颜色，</text>
+  <text x="1625" y="542" class="small">避免相邻节点同时变化。</text>
+
+  <!-- Main arrows, endpoints sit on boxes -->
+  <path d="M330 235 L455 235" class="clock"/>
+  <path d="M330 467 L455 467" class="config"/>
+  <path d="M785 470 L895 470" class="config"/>
+  <path d="M785 238 L895 238 L895 250" class="phase"/>
+  <path d="M895 725 L785 725" class="read"/>
+  <path d="M455 725 L330 725" class="read"/>
+  <path d="M620 310 L620 385" class="wire"/>
+  <path d="M620 555 L620 665" class="wire"/>
+  <text x="360" y="225" class="label">clk</text>
+  <text x="360" y="455" class="label">cfg / run_start</text>
+  <text x="815" y="455" class="label">node/edge 参数写入</text>
+  <text x="800" y="230" class="label">phase_start_c0..c3</text>
+  <text x="795" y="712" class="label">spin_flat / done</text>
+
+  <!-- Footer -->
+  <rect x="70" y="965" width="1730" height="70" fill="#f8fafc" stroke="#d3dce8" stroke-width="1.5" rx="10"/>
+  <line x1="110" y1="1000" x2="175" y2="1000" class="clock"/><text x="195" y="1006" class="legend-text">Clock</text>
+  <line x1="305" y1="1000" x2="370" y2="1000" class="config"/><text x="390" y="1006" class="legend-text">I/O 写入配置与控制</text>
+  <line x1="585" y1="1000" x2="650" y2="1000" class="phase"/><text x="670" y="1006" class="legend-text">四相更新控制</text>
+  <line x1="865" y1="1000" x2="930" y2="1000" class="read"/><text x="950" y="1006" class="legend-text">结果回读</text>
+  <text x="1190" y="1006" class="legend-text">King graph: 每个节点连接上下左右和四个对角方向</text>
+</svg>

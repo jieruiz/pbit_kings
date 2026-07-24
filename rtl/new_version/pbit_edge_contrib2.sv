@@ -1,11 +1,11 @@
-`timescale 1ns / 1ps
-
+`ifndef PBIT_EDGE_CONTRIB2
+`define PBIT_EDGE_CONTRIB2
 module pbit_edge_contrib2 (
-    input  wire accept_i,
-    input  wire edge_sign_i,      // 1: J = +1, 0: J = -1
-    input  wire neighbor_spin_i,  // 1: s = +1, 0: s = -1
+    input  logic accept_i,
+    input  logic edge_sign_i,      // 1: J = +1, 0: J = -1
+    input  logic neighbor_spin_i,  // 1: s = +1, 0: s = -1
 
-    output reg signed [1:0] contrib_o
+    output logic signed [1:0] contrib_o
 );
 
     always @(*) begin
@@ -17,8 +17,9 @@ module pbit_edge_contrib2 (
                 2'b10: contrib_o = -2'sd1;  // +J * -s
                 2'b01: contrib_o = -2'sd1;  // -J * +s
                 2'b00: contrib_o =  2'sd1;  // -J * -s
+                default: contrib_o = 2'sd0;
             endcase
         end
     end
-
 endmodule
+`endif

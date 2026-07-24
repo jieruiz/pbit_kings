@@ -1,8 +1,8 @@
-`timescale 1ns / 1ps
-
+`ifndef PBIT_RAND16_EXTRACT
+`define PBIT_RAND16_EXTRACT
 module pbit_rand16_extract (
-    input  wire [31:0] rand32_i,
-    output wire [15:0] rand16_o
+    input  logic [31:0] rand32_i,
+    output logic [15:0] rand16_o
 );
 
     assign rand16_o[0]  = rand32_i[0];
@@ -26,3 +26,4 @@ module pbit_rand16_extract (
     assign rand16_o[15] = rand32_i[30];
 
 endmodule
+`endif

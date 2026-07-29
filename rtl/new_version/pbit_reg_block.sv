@@ -597,15 +597,15 @@ module pbit_reg_block (
     // -------------------------------------------------------------------------
     // Edge staging registers's d port assignment
     // -------------------------------------------------------------------------
-    assign cfg_edge_type_d  = (reg_addr_i == A_EDGE_TARGET) ? reg_wdata_i[EDGE_TYPE_MSB:EDGE_TYPE_LSB] : 3'd0;
+    assign cfg_edge_type_d  = ((reg_addr_i == A_EDGE_TARGET) && reg_wr_en_i)? reg_wdata_i[EDGE_TYPE_MSB:EDGE_TYPE_LSB]: cfg_edge_type_q;
     assign cfg_edge_row_d   = reg_wdata_i[EDGE_TARGET_ROW_MSB:EDGE_TARGET_ROW_LSB];
     assign cfg_edge_row_en  = (reg_addr_i == A_EDGE_TARGET) && reg_wr_en_i;
     assign cfg_edge_col_d   = reg_wdata_i[EDGE_TARGET_COL_MSB:EDGE_TARGET_COL_LSB];
     assign cfg_edge_col_en  = (reg_addr_i == A_EDGE_TARGET) && reg_wr_en_i;
     assign cfg_edge_prob_d  = reg_wdata_i[EDGE_CFG_EDGE_PROB_MSB:EDGE_CFG_EDGE_PROB_LSB];
-    assign cfg_edge_prob_en = (reg_addr_i == A_EDGE_TARGET) && reg_wr_en_i;
-    assign cfg_edge_sign_d  = reg_wdata_i[EDGE_CFG_EDGE_SIGN_MSB:EDGE_CFG_EDGE_SIGN_LSB];
-    assign cfg_edge_valid_d = reg_wdata_i[EDGE_CFG_EDGE_VALID_MSB:EDGE_CFG_EDGE_VALID_LSB];
+    assign cfg_edge_prob_en = (reg_addr_i == A_EDGE_CFG) && reg_wr_en_i;
+    assign cfg_edge_sign_d  = ((reg_addr_i == A_EDGE_CFG) && reg_wr_en_i)? reg_wdata_i[EDGE_CFG_EDGE_SIGN_MSB:EDGE_CFG_EDGE_SIGN_LSB]: cfg_edge_sign_q;
+    assign cfg_edge_valid_d = ((reg_addr_i == A_EDGE_CFG) && reg_wr_en_i)? reg_wdata_i[EDGE_CFG_EDGE_VALID_MSB:EDGE_CFG_EDGE_VALID_LSB]: cfg_edge_valid_q;
 
     // -------------------------------------------------------------------------
     // Backend node configuration registers's d port assignment
@@ -758,7 +758,7 @@ module pbit_reg_block (
     assign edge_target_col_valid_w = edge_target_col_valid(cfg_edge_type_q, cfg_edge_col_q);
     assign error_status_d[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[ADDR_ERR_MSB:ADDR_ERR_LSB] && reg_wr_en_i)? 1'b0:
-                                                                     (reg_wr_en_i || reg_rd_en_i)? addr_valid_w: 
+                                                                     (reg_wr_en_i || reg_rd_en_i)? !addr_valid_w: 
                                                                      error_status_q[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB];
     assign error_status_d[WR_TO_RO_PACKED_MSB:WR_TO_RO_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[WR_TO_RO_MSB:WR_TO_RO_LSB] && reg_wr_en_i)? 1'b0: 

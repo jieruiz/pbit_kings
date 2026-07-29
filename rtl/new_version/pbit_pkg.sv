@@ -20,7 +20,7 @@ package pbit_pkg;
     parameter int SWEEP_ROUND_WIDTH = $clog2(SWEEP_ROUND_NUM);
     //Node target reg
     // Node target reg
-    parameter logic [15:0] A_NODE_TARGET = 16'h0040;
+    parameter logic [15:0] A_NODE_TARGET = 16'h00D8;
     parameter TARGET_MODE_WIDTH = 2;
     parameter logic [TARGET_MODE_WIDTH-1:0] TARGET_MODE_GLOBAL = 2'd0;
     parameter logic [TARGET_MODE_WIDTH-1:0] TARGET_MODE_ROW = 2'd1;

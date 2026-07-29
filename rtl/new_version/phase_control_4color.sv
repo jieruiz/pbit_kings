@@ -149,7 +149,7 @@ module phase_ctrl_4color (
     // ------------------------------------------------------------
     assign sweep_interval_cnt_d  = (state_q == S_IDLE)? {SWEEP_INTERVAL_WIDTH{1'b0}}:
                                    (state_q == S_WAIT_C3)? (sweep_interval_cnt_q == (sweep_interval_i[sweep_round_cnt_q] - 1))? {SWEEP_INTERVAL_WIDTH{1'b0}}:
-                                                                                                                                sweep_interval_cnt_d + {{(SWEEP_INTERVAL_WIDTH-1){1'b0}}, 1'b1}:
+                                                                                                                                sweep_interval_cnt_q + {{(SWEEP_INTERVAL_WIDTH-1){1'b0}}, 1'b1}:
                                                            sweep_interval_cnt_q;
     assign sweep_interval_cnt_en = ((state_q == S_IDLE) && (state_d == S_WAIT_C0)) || ((state_q == S_WAIT_C3) && (state_d == S_WAIT_C0));
 
@@ -174,7 +174,7 @@ module phase_ctrl_4color (
     // ------------------------------------------------------------
     // run_done
     // ------------------------------------------------------------
-    assign run_done_d = ((state_q == S_IDLE) && (state_q == S_WAIT_C0))? 1'b0:
+    assign run_done_d = ((state_q == S_IDLE) && (state_d == S_WAIT_C0))? 1'b0:
                         ((state_q == S_WAIT_C3) && (state_d == S_IDLE))? 1'b1:
                         run_done_q;
     assign run_done_o = run_done_q;

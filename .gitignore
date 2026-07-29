@@ -26,6 +26,22 @@ xelab.*
 xsim.*
 webtalk.*
 
+# VCS/Verdi generated files
+simv*
+csrc/
+simv.daidir/
+DVEfiles/
+verdiLog/
+*.kdb
+*.vpd
+*.fsdb
+*.key
+*.csv
+
+# Python generated files
+__pycache__/
+*.pyc
+
 # OS/editor files
 .DS_Store
 Thumbs.db

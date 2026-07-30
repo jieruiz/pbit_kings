@@ -130,7 +130,8 @@ module phase_ctrl_4color (
     // ------------------------------------------------------------
     // phase start pulse
     // ------------------------------------------------------------
-    assign phase_start_c0_o = (state_q == S_IDLE) && (state_d == S_WAIT_C0);
+    // Start C0 both for the first sweep and when C3 loops into the next sweep.
+    assign phase_start_c0_o = ((state_q == S_IDLE) || (state_q == S_WAIT_C3)) && (state_d == S_WAIT_C0);
     assign phase_start_c1_o = (state_q == S_WAIT_C0) && (state_d == S_WAIT_C1);
     assign phase_start_c2_o = (state_q == S_WAIT_C1) && (state_d == S_WAIT_C2);
     assign phase_start_c3_o = (state_q == S_WAIT_C2) && (state_d == S_WAIT_C3);
@@ -156,17 +157,31 @@ module phase_ctrl_4color (
     // ------------------------------------------------------------
     // sweep round counter
     // ------------------------------------------------------------
-    assign sweep_round_cnt_d  = (state_q == S_IDLE)? {SWEEP_ROUND_WIDTH{1'b0}}:
-                                (state_q == S_WAIT_C3)? (sweep_interval_cnt_q == (sweep_interval_i[sweep_round_cnt_q] - 1))? |sweep_interval_i[sweep_round_cnt_q+1]? sweep_round_cnt_q + {{(SWEEP_ROUND_WIDTH-1){1'b0}}, 1'b1}:
-                                                                                                                                                                     {SWEEP_ROUND_WIDTH{1'b0}}:
-                                                                                                                             sweep_round_cnt_q:
-                                                        sweep_round_cnt_q;
+    
+    logic sweep_round_is_last;
+    logic [SWEEP_ROUND_WIDTH-1:0] sweep_round_next;
+
+   assign sweep_round_is_last =
+    (sweep_round_cnt_q == SWEEP_ROUND_WIDTH'(SWEEP_ROUND_NUM - 1));
+
+   assign sweep_round_next =
+    sweep_round_cnt_q + {{(SWEEP_ROUND_WIDTH-1){1'b0}}, 1'b1};//boundary 
+
+   assign sweep_round_cnt_d =
+    (state_q == S_IDLE) ? {SWEEP_ROUND_WIDTH{1'b0}} :
+    (state_q == S_WAIT_C3) ?
+        (sweep_interval_cnt_q == (sweep_interval_i[sweep_round_cnt_q] - 1'b1)) ?
+            sweep_round_is_last ? {SWEEP_ROUND_WIDTH{1'b0}} :
+            (|sweep_interval_i[sweep_round_next]) ? sweep_round_next :
+                                                     {SWEEP_ROUND_WIDTH{1'b0}} :
+            sweep_round_cnt_q :
+    sweep_round_cnt_q;
     assign sweep_round_cnt_en = ((state_q == S_IDLE) && (state_d == S_WAIT_C0)) || ((state_q == S_WAIT_C3) && (state_d == S_WAIT_C0));
 
     // ------------------------------------------------------------
     // run_busy
     // ------------------------------------------------------------
-    assign run_busy_d = ((state_q == S_IDLE) && (state_q == S_WAIT_C0))? 1'b1:
+    assign run_busy_d = ((state_q == S_IDLE) && (state_d == S_WAIT_C0))? 1'b1:
                         ((state_q == S_WAIT_C3) && (state_d == S_IDLE))? 1'b0:
                         run_busy_q;
     assign run_busy_o = run_busy_q;

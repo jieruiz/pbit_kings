@@ -400,7 +400,7 @@ module pbit_array_kings (
                     .busy_o                     (),
                     .done_hold_o                ()
                 );
-                assign spin_flat[r*ROWS+c] = spin[r][c];
+                assign spin_flat[r*COLS+c] = spin[r][c];//ROWS-COLS
             end
         end
     endgenerate
@@ -615,7 +615,7 @@ module pbit_array_kings (
     endgenerate
     assign snapshot_flat_d = spin_flat_reshape[snapshot_addr_i];
     assign snapshot_flat_en = snapshot_latch_pulse_i;
-    assign snapshot_vld_d = snapshot_latch_pulse_i;
+    assign snapshot_vld_d = snapshot_latch_pulse_i? 1'b1: snapshot_vld_q;
 
     dffe #(.WIDTH(SNAPSHOT_WIDTH)
     ) snapshot_flat_ff (

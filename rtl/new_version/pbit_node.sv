@@ -467,7 +467,7 @@ module pbit_node (
     assign macsum_d = h_sum_with_bias_w;
     assign macsum_en = (state_q == S_EDGE) || (state_d == S_PBIT);
     assign macsum_q = $signed(macsum_q_raw);
-    assign votes_d = (state_q == S_PBIT)? {votes_d[NUM_MAJORITY_MAX-2:0], proposed_spin_w}: {NUM_MAJORITY_MAX{1'b0}};
+    assign votes_d = (state_q == S_PBIT)? {votes_q[NUM_MAJORITY_MAX-2:0], proposed_spin_w}: {NUM_MAJORITY_MAX{1'b0}};
     assign votes_en = (state_q == S_PBIT) || (state_q == S_IDLE);
     assign busy_o = !clamp_en_q && (state_q != S_IDLE);
     assign done_hold_o = done_hold_q;

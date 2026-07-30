@@ -70,6 +70,10 @@ module pbit_top (
     logic                                   all_done_c1_w;
     logic                                   all_done_c2_w;
     logic                                   all_done_c3_w;
+    logic                                   phase_start_c0_w;
+    logic                                   phase_start_c1_w;
+    logic                                   phase_start_c2_w;
+    logic                                   phase_start_c3_w;
 
     assign uart_rx_w = uart_rx_i;
     assign uart_tx_o = uart_tx_w;

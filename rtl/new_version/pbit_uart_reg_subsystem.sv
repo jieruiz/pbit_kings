@@ -87,6 +87,7 @@ module pbit_uart_reg_subsystem (
     logic [15:0] reg_addr_w;
     logic [31:0] reg_wdata_w;
     logic [31:0] reg_rdata_w;
+    logic        reg_access_error_w;
 
     logic        uart_frame_err_pulse_w;
     logic        uart_overflow_pulse_w;
@@ -103,7 +104,7 @@ module pbit_uart_reg_subsystem (
         .reg_addr_o               (reg_addr_w),
         .reg_wdata_o              (reg_wdata_w),
         .reg_rdata_i              (reg_rdata_w),
-        .reg_access_error_i       (1'b0),
+        .reg_access_error_i       (reg_access_error_w),
 
         .uart_frame_err_pulse_o   (uart_frame_err_pulse_w),
         .uart_overflow_pulse_o    (uart_overflow_pulse_w),
@@ -121,6 +122,7 @@ module pbit_uart_reg_subsystem (
         .reg_addr_i                  (reg_addr_w),
         .reg_wdata_i                 (reg_wdata_w),
         .reg_rdata_o                 (reg_rdata_w),
+        .reg_access_error_o          (reg_access_error_w),
 
         .run_busy_i                  (run_busy_i),
         .run_done_i                  (run_done_i),

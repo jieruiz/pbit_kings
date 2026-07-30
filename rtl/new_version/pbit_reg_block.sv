@@ -25,7 +25,8 @@ module pbit_reg_block (
     input  logic [15:0]                             reg_addr_i,
     input  logic [31:0]                             reg_wdata_i,
     output logic [31:0]                             reg_rdata_o,
-           
+    output logic                                    reg_access_error_o,
+            
     // External runtime status.           
     input  logic                                    run_busy_i,
     input  logic                                    run_done_i,
@@ -125,7 +126,7 @@ module pbit_reg_block (
     assign cfg_edge_type_o     = cfg_edge_type_q;
     assign cfg_edge_row_o      = cfg_edge_row_q;
     assign cfg_edge_col_o      = cfg_edge_col_q;
-    assign cfg_edge_prob_o    = cfg_edge_prob_q;
+    assign cfg_edge_prob_o     = cfg_edge_prob_q;
     assign cfg_edge_sign_o     = cfg_edge_sign_q;
     assign cfg_edge_valid_o    = cfg_edge_valid_q;
 
@@ -265,6 +266,7 @@ module pbit_reg_block (
     logic glb_soft_rstn_w;//pulse
     logic cfg_done_set_pulse_w;
     logic cfg_done_clr_pulse_w;
+    logic run_start_req_w;
     logic run_start_pulse_w;        
     logic snapshot_latch_pulse_w;
     logic run_done_clr_pulse_w;
@@ -352,7 +354,8 @@ module pbit_reg_block (
         input [EDGE_TYPE_WIDTH-1:0] typ,
         input [EDGE_TARGET_COL_WIDTH-1:0] col
     );
-        edge_target_col_valid = (typ == EDGE_TYPE_EDGE_DSW)? (col < COLS[EDGE_TARGET_COL_WIDTH-1:0]): 
+        // DSW edges start at c=1 because they connect (r,c) to (r+1,c-1).
+        edge_target_col_valid = (typ == EDGE_TYPE_EDGE_DSW)? ((col > {EDGE_TARGET_COL_WIDTH{1'b0}}) && (col < COLS[EDGE_TARGET_COL_WIDTH-1:0])): 
                                 (typ == EDGE_TYPE_EDGE_V)? (col < COLS[EDGE_TARGET_COL_WIDTH-1:0]):
                                 (col < (COLS[EDGE_TARGET_COL_WIDTH-1:0]-1));
     endfunction
@@ -741,6 +744,7 @@ module pbit_reg_block (
     logic addr_valid_w;
     logic addr_writable_w;
     logic addr_readable_w;
+    logic reg_access_error_w;
     logic node_target_mode_valid_w;
     logic node_target_row_valid_w;
     logic node_target_col_valid_w;
@@ -750,6 +754,10 @@ module pbit_reg_block (
     assign addr_valid_w = addr_valid(reg_addr_i);
     assign addr_writable_w = addr_writable(reg_addr_i);
     assign addr_readable_w = addr_readable(reg_addr_i);
+    // UART samples ST_REG_ERR in BUS_CAPTURE, one cycle after the access pulse.
+    assign reg_access_error_w = ((reg_wr_en_i || reg_rd_en_i) && !addr_valid_w) ||
+                                (reg_wr_en_i && addr_valid_w && !addr_writable_w) ||
+                                (reg_rd_en_i && addr_valid_w && !addr_readable_w);
     assign node_target_mode_valid_w = node_target_mode_valid(node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB]);
     assign node_target_row_valid_w = node_target_row_valid(node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB]);
     assign node_target_col_valid_w = node_target_col_valid(node_target_q[NODE_TARGET_COL_PACKED_MSB:NODE_TARGET_COL_PACKED_LSB]);
@@ -759,7 +767,7 @@ module pbit_reg_block (
     assign error_status_d[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[ADDR_ERR_MSB:ADDR_ERR_LSB] && reg_wr_en_i)? 1'b0:
                                                                      (reg_wr_en_i || reg_rd_en_i)? !addr_valid_w: 
-                                                                     error_status_q[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB];
+                                                                     error_status_q[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB];//addr_valid_w-!addr_valid_w
     assign error_status_d[WR_TO_RO_PACKED_MSB:WR_TO_RO_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[WR_TO_RO_MSB:WR_TO_RO_LSB] && reg_wr_en_i)? 1'b0: 
                                                                      (reg_wr_en_i)? addr_valid_w && (!addr_writable_w):
@@ -778,11 +786,11 @@ module pbit_reg_block (
                                                                                          error_status_q[EDGE_CFG_WHILE_RUN_PACKED_MSB:EDGE_CFG_WHILE_RUN_PACKED_LSB];
     assign error_status_d[RUN_WITHOUT_CFG_DONE_PACKED_MSB:RUN_WITHOUT_CFG_DONE_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[RUN_WITHOUT_CFG_DONE_MSB:RUN_WITHOUT_CFG_DONE_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                                             (!cfg_done_q && run_start_pulse_w)? 1'b1:
+                                                                                             (!cfg_done_q && run_start_req_w)? 1'b1:
                                                                                              error_status_q[RUN_WITHOUT_CFG_DONE_PACKED_MSB:RUN_WITHOUT_CFG_DONE_PACKED_LSB];
     assign error_status_d[RUN_WHEN_BUSY_PACKED_MSB:RUN_WHEN_BUSY_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                                ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[RUN_WHEN_BUSY_MSB:RUN_WHEN_BUSY_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                               (run_busy_w && run_start_pulse_w)? 1'b1:
+                                                                               (run_busy_w && run_start_req_w)? 1'b1:
                                                                                error_status_q[RUN_WHEN_BUSY_PACKED_MSB:RUN_WHEN_BUSY_PACKED_LSB];      
     assign error_status_d[NODE_TARGET_MODE_ERR_PACKED_MSB:NODE_TARGET_MODE_ERR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[NODE_TARGET_MODE_ERR_MSB:NODE_TARGET_MODE_ERR_LSB] && reg_wr_en_i)? 1'b0: 
@@ -795,7 +803,7 @@ module pbit_reg_block (
     assign error_status_d[NODE_COL_OOR_PACKED_MSB:NODE_COL_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[NODE_COL_OOR_MSB:NODE_COL_OOR_LSB] && reg_wr_en_i)? 1'b0: 
                                                                              ((node_apply_cfg_pulse_w || local_node_cfg_pulse_w || clr_scope_en_pulse_w || local_node_clr_pulse_w || node_rdata_pulse_w) && !node_target_col_valid_w)? 1'b1:
-                                                                             error_status_q[NODE_ROW_OOR_PACKED_MSB:NODE_ROW_OOR_PACKED_LSB];  
+                                                                             error_status_q[NODE_COL_OOR_PACKED_MSB:NODE_COL_OOR_PACKED_LSB];//hold node column OOR status, not row status
     assign error_status_d[EDGE_ROW_OOR_PACKED_MSB:EDGE_ROW_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[EDGE_ROW_OOR_MSB:EDGE_ROW_OOR_LSB] && reg_wr_en_i)? 1'b0: 
                                                                              ((edge_apply_cfg_pulse_w || cfg_edge_clr_pulse_w || edge_rdata_pulse_w) && !edge_target_row_valid_w)? 1'b1:
@@ -818,8 +826,8 @@ module pbit_reg_block (
                                                                                error_status_q[UART_OVERFLOW_PACKED_MSB:UART_OVERFLOW_PACKED_LSB];    
     assign error_status_d[SNAP_ADDR_OOR_PACKED_MSB:SNAP_ADDR_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                                ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[SNAP_ADDR_OOR_MSB:SNAP_ADDR_OOR_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                               (snapshot_latch_pulse_w && (snapshot_addr_q[SNAPSHOT_ADDR_PACKED_MSB:SNAPSHOT_ADDR_PACKED_LSB] < SPIN_ADDR_MAX[SNAPSHOT_ADDR_WIDTH-1:0]))? 1'b1:
-                                                                               error_status_q[SNAP_ADDR_OOR_PACKED_MSB:SNAP_ADDR_OOR_PACKED_LSB];    
+                                                                               ((reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && reg_wdata_i[SNAPSHOT_LATCH_MSB:SNAPSHOT_LATCH_LSB] && !snapshot_addr_valid(snapshot_addr_q[SNAPSHOT_ADDR_PACKED_MSB:SNAPSHOT_ADDR_PACKED_LSB]))? 1'b1:
+                                                                               error_status_q[SNAP_ADDR_OOR_PACKED_MSB:SNAP_ADDR_OOR_PACKED_LSB];//use raw snapshot latch request to catch invalid snapshot address
     
     // -------------------------------------------------------------------------
     // Global status registers
@@ -835,10 +843,13 @@ module pbit_reg_block (
     // ----------------------------------------------------------
     // Glboal Control registers's assignment.
     // -------------------------------------------------------------------------
-    assign glb_soft_rstn_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (!reg_wdata_i[SOFT_RESET_MSB:SOFT_RESET_LSB]);
+    // Low-active soft reset: stay released high, pulse low only when software writes SOFT_RESET=1.
+    assign glb_soft_rstn_w = !((reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && reg_wdata_i[SOFT_RESET_MSB:SOFT_RESET_LSB]);
     assign cfg_done_set_pulse_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[CFG_DONE_SET_MSB:CFG_DONE_SET_LSB]) && !run_busy_w;
     assign cfg_done_clr_pulse_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[CFG_DONE_CLEAR_MSB:CFG_DONE_CLEAR_LSB]) && !run_busy_w;
-    assign run_start_pulse_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[RUN_START_MSB:RUN_START_LSB]) && !run_busy_w && cfg_done_q;
+    // Use the raw run-start request for error reporting; only pulse when accepted.
+    assign run_start_req_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[RUN_START_MSB:RUN_START_LSB]);
+    assign run_start_pulse_w = run_start_req_w && !run_busy_w && cfg_done_q;
     assign snapshot_latch_pulse_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[SNAPSHOT_LATCH_MSB:SNAPSHOT_LATCH_LSB]) && !run_busy_w && snapshot_addr_valid(snapshot_addr_q);
     assign run_done_clr_pulse_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[RUN_DONE_CLEAR_MSB:RUN_DONE_CLEAR_LSB]) && !run_busy_w;
     assign error_clear_pulse_w = (reg_addr_i == A_GLOBAL_CTRL) && reg_wr_en_i && (reg_wdata_i[ERROR_CLEAR_MSB:ERROR_CLEAR_LSB]);
@@ -1061,6 +1072,14 @@ module pbit_reg_block (
         .rst_n (rst_n),
         .d_i (error_status_d),
         .q_o (error_status_q)
+    );
+
+    dffr #(.WIDTH(1)
+    ) reg_access_error_ff(
+        .clk (clk),
+        .rst_n (rst_n),
+        .d_i (reg_access_error_w),
+        .q_o (reg_access_error_o)
     );
 
     // -------------------------------------------------------------------------

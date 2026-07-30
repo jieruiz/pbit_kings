@@ -28,9 +28,10 @@ module lfsr32_rng32 (
     logic                       feedback;
     logic                       rnd_valid_q, rnd_valid_d;
 
+    // Prevent each LFSR seed source from loading the all-zero lock-up state.
     assign global_cfg_seed_safe = (global_cfg_seed_i == 32'h0000_0000) ? 32'h0000_0001 : global_cfg_seed_i;
-    assign row_cfg_seed_safe = (global_cfg_seed_i == 32'h0000_0000) ? 32'h0000_0001 : row_cfg_seed_i;
-    assign local_cfg_seed_safe = (global_cfg_seed_i == 32'h0000_0000) ? 32'h0000_0001 : local_cfg_seed_i;
+    assign row_cfg_seed_safe = (row_cfg_seed_i == 32'h0000_0000) ? 32'h0000_0001 : row_cfg_seed_i;
+    assign local_cfg_seed_safe = (local_cfg_seed_i == 32'h0000_0000) ? 32'h0000_0001 : local_cfg_seed_i;
     assign feedback   = state_q[31] ^ state_q[21] ^ state_q[1] ^ state_q[0];
     assign state_d = local_seed_we_i? local_node_cfg_i[SEED_VALID_PACKED_MSB:SEED_VALID_PACKED_LSB]? local_cfg_seed_safe: state_q:
                      cfg_node_load_i? local_cfg_vld_i? state_q:

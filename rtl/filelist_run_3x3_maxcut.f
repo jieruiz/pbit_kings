@@ -23,4 +23,4 @@
 ./new_version/pbit_array_kings.sv
 ./new_version/pbit_uart_reg_subsystem.sv
 ./new_version/pbit_top.sv
-./tb/tb.sv
+./tb/tb_run_3x3_maxcut.sv

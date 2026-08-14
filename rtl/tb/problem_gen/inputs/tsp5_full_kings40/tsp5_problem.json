@@ -1,0 +1,20 @@
+{
+  "num_cities": 5,
+  "total_logical_pbits": 25,
+  "coords_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_coords.txt",
+  "distance_matrix_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_distance_matrix.txt",
+  "qubo_q_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_qubo_q25.txt",
+  "qubo_Q_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_qubo_Q25.txt",
+  "J_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_J25.txt",
+  "ising_h_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_ising_h25.txt",
+  "solver_bias_path": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_kinggraph_tsp\\tsp5_full_kings40\\tsp5_bias25_solver_sign.txt",
+  "exact_opt_tour": [
+    0,
+    1,
+    4,
+    2,
+    3
+  ],
+  "exact_opt_length": 2.3731369786172563,
+  "note": "solver_bias is -ising_h because the with-bias sampler adds bias to the update field."
+}

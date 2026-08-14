@@ -1,0 +1,8 @@
+*.sv text eol=lf
+*.svh text eol=lf
+*.v text eol=lf
+*.f text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf

@@ -40,15 +40,19 @@ module tb_run_ksat_10v40c;
     int unsigned live_best_satisfied;
     int unsigned live_min_unsatisfied;
     int unsigned live_first_success_sweep;
+    int unsigned live_first_success_cycle;
     int unsigned live_best_broken_chains;
     int unsigned live_final_satisfied;
+    int unsigned live_final_cycle;
     int unsigned live_final_unsatisfied;
     int unsigned live_final_broken_chains;
     int unsigned run_first_success_sweep [K10_NUM_SEED_RUNS];
+    int unsigned run_first_success_cycle [K10_NUM_SEED_RUNS];
     int unsigned run_best_satisfied [K10_NUM_SEED_RUNS];
     int unsigned run_final_satisfied [K10_NUM_SEED_RUNS];
     int unsigned global_success_count;
     int unsigned global_fastest_success_sweep;
+    int unsigned global_fastest_success_cycle;
     int unsigned global_fastest_success_run;
     integer live_history_fd;
 
@@ -442,14 +446,16 @@ module tb_run_ksat_10v40c;
         live_best_satisfied = 0;
         live_min_unsatisfied = K10_NUM_CLAUSES;
         live_first_success_sweep = 0;
+        live_first_success_cycle = 0;
         live_best_broken_chains = 0;
         live_final_satisfied = 0;
+        live_final_cycle = 0;
         live_final_unsatisfied = K10_NUM_CLAUSES;
         live_final_broken_chains = 0;
         history_path = $sformatf("sim_run_ksat_10v40c_run%0d_history.csv", run_idx);
         live_history_fd = $fopen(history_path, "w");
         if (live_history_fd != 0) begin
-            $fdisplay(live_history_fd, "run,sweep,satisfied,unsatisfied,best_satisfied,min_unsatisfied,first_success_sweep,broken_chains,best_broken_chains,i0_level,round,time");
+            $fdisplay(live_history_fd, "run,sweep,cycles_since_run_start,satisfied,unsatisfied,best_satisfied,min_unsatisfied,first_success_sweep,first_success_cycle,broken_chains,best_broken_chains,i0_level,round,time");
         end else begin
             $display("[RUN_KSAT_10V40C] could not open %s", history_path);
         end
@@ -458,6 +464,7 @@ module tb_run_ksat_10v40c;
     task automatic record_live_sweep_score(
         input int unsigned run_idx,
         input int unsigned sweep_idx,
+        input int unsigned cycles_since_run_start,
         input bit force_print
     );
         int unsigned satisfied;
@@ -485,17 +492,21 @@ module tb_run_ksat_10v40c;
             end
             if ((satisfied == K10_NUM_CLAUSES) && (live_first_success_sweep == 0)) begin
                 live_first_success_sweep = sweep_idx + 1;
+                live_first_success_cycle = cycles_since_run_start;
             end
 
             live_sample_count++;
             live_final_satisfied = satisfied;
+            live_final_cycle = cycles_since_run_start;
             live_final_unsatisfied = unsatisfied;
             live_final_broken_chains = broken_chain_count;
 
             if (live_history_fd != 0) begin
-                $fdisplay(live_history_fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0t",
-                          run_idx, sweep_idx + 1, satisfied, unsatisfied, live_best_satisfied, live_min_unsatisfied,
-                          live_first_success_sweep, broken_chain_count, live_best_broken_chains,
+                $fdisplay(live_history_fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0t",
+                          run_idx, sweep_idx + 1, cycles_since_run_start,
+                          satisfied, unsatisfied, live_best_satisfied, live_min_unsatisfied,
+                          live_first_success_sweep, live_first_success_cycle,
+                          broken_chain_count, live_best_broken_chains,
                           u_pbit_top.u_phase_ctrl_4color.i0_level_o,
                           u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q,
                           $time);
@@ -503,9 +514,10 @@ module tb_run_ksat_10v40c;
 
             if (improved || force_print || (live_first_success_sweep == (sweep_idx + 1)) ||
                 (((sweep_idx + 1) % K10_PROGRESS_PRINT_STEP) == 0)) begin
-                $display("[RUN_KSAT_10V40C_SWEEP] run=%0d sweep=%0d satisfied=%0d/%0d best=%0d min_unsat=%0d first_success=%0d broken=%0d i0=%0d round=%0d",
-                         run_idx, sweep_idx + 1, satisfied, K10_NUM_CLAUSES, live_best_satisfied,
-                         live_min_unsatisfied, live_first_success_sweep, broken_chain_count,
+                $display("[RUN_KSAT_10V40C_SWEEP] run=%0d sweep=%0d cycles=%0d satisfied=%0d/%0d best=%0d min_unsat=%0d first_success=%0d first_success_cycle=%0d broken=%0d i0=%0d round=%0d",
+                         run_idx, sweep_idx + 1, cycles_since_run_start,
+                         satisfied, K10_NUM_CLAUSES, live_best_satisfied,
+                         live_min_unsatisfied, live_first_success_sweep, live_first_success_cycle, broken_chain_count,
                          u_pbit_top.u_phase_ctrl_4color.i0_level_o,
                          u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q);
             end
@@ -518,11 +530,13 @@ module tb_run_ksat_10v40c;
         int unsigned poll_limit;
         logic [K10_NUM_I0_LEVELS-1:0] saw_round_mask;
         int unsigned completed_sweeps;
+        int unsigned run_cycles_since_start;
         bit saw_first_c0_start;
         bit final_sweep_recorded;
 
         saw_round_mask = '0;
         completed_sweeps = 0;
+        run_cycles_since_start = 0;
         saw_first_c0_start = 1'b0;
         final_sweep_recorded = 1'b0;
         init_live_score_history(run_idx);
@@ -533,6 +547,9 @@ module tb_run_ksat_10v40c;
             begin
                 while (u_pbit_top.u_phase_ctrl_4color.run_done_o !== 1'b1) begin
                     @(negedge clk);
+                    if (saw_first_c0_start && !final_sweep_recorded) begin
+                        run_cycles_since_start++;
+                    end
                     if (u_pbit_top.u_phase_ctrl_4color.run_busy_o === 1'b1) begin
                         if (u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q < K10_NUM_I0_LEVELS) begin
                             saw_round_mask[u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q] = 1'b1;
@@ -540,14 +557,16 @@ module tb_run_ksat_10v40c;
                     end
                     if (u_pbit_top.phase_start_c0_w === 1'b1) begin
                         if (saw_first_c0_start) begin
-                            record_live_sweep_score(run_idx, completed_sweeps, 1'b0);
+                            record_live_sweep_score(run_idx, completed_sweeps, run_cycles_since_start, 1'b0);
                             completed_sweeps++;
                         end else begin
+                            // Count only the hardware run window: cycle 0 is the first C0 start after RUN_START.
+                            run_cycles_since_start = 0;
                             saw_first_c0_start = 1'b1;
                         end
                     end
                     if ((u_pbit_top.u_phase_ctrl_4color.run_done_d === 1'b1) && !final_sweep_recorded) begin
-                        record_live_sweep_score(run_idx, completed_sweeps, 1'b1);
+                        record_live_sweep_score(run_idx, completed_sweeps, run_cycles_since_start, 1'b1);
                         completed_sweeps++;
                         final_sweep_recorded = 1'b1;
                     end
@@ -599,9 +618,11 @@ module tb_run_ksat_10v40c;
         load_ksat_10v40c_data();
         global_success_count = 0;
         global_fastest_success_sweep = 0;
+        global_fastest_success_cycle = 0;
         global_fastest_success_run = 0;
         for (int run_idx = 0; run_idx < K10_NUM_SEED_RUNS; run_idx++) begin
             run_first_success_sweep[run_idx] = 0;
+            run_first_success_cycle[run_idx] = 0;
             run_best_satisfied[run_idx] = 0;
             run_final_satisfied[run_idx] = 0;
         end
@@ -642,28 +663,35 @@ module tb_run_ksat_10v40c;
             end
 
             run_first_success_sweep[run_idx] = live_first_success_sweep;
+            run_first_success_cycle[run_idx] = live_first_success_cycle;
             run_best_satisfied[run_idx] = live_best_satisfied;
             run_final_satisfied[run_idx] = final_satisfied;
 
             if (live_first_success_sweep != 0) begin
                 global_success_count++;
                 if ((global_fastest_success_sweep == 0) ||
-                    (live_first_success_sweep < global_fastest_success_sweep)) begin
+                    (live_first_success_sweep < global_fastest_success_sweep) ||
+                    ((live_first_success_sweep == global_fastest_success_sweep) &&
+                     (live_first_success_cycle < global_fastest_success_cycle))) begin
                     global_fastest_success_sweep = live_first_success_sweep;
+                    global_fastest_success_cycle = live_first_success_cycle;
                     global_fastest_success_run = run_idx;
                 end
             end
 
-            $display("[RUN_KSAT_10V40C_RUN] run=%0d best_satisfied=%0d/%0d first_success_sweep=%0d final_satisfied=%0d/%0d final_unsatisfied=%0d",
+            $display("[RUN_KSAT_10V40C_RUN] run=%0d best_satisfied=%0d/%0d first_success_sweep=%0d first_success_cycle=%0d final_satisfied=%0d/%0d final_unsatisfied=%0d final_cycle=%0d",
                      run_idx, live_best_satisfied, K10_NUM_CLAUSES, live_first_success_sweep,
-                     final_satisfied, K10_NUM_CLAUSES, final_unsatisfied);
+                     live_first_success_cycle, final_satisfied, K10_NUM_CLAUSES,
+                     final_unsatisfied, live_final_cycle);
         end
 
-        $display("[RUN_KSAT_10V40C_SUMMARY] success_count=%0d/%0d fastest_run=%0d fastest_first_success_sweep=%0d",
-                 global_success_count, K10_NUM_SEED_RUNS, global_fastest_success_run, global_fastest_success_sweep);
+        $display("[RUN_KSAT_10V40C_SUMMARY] success_count=%0d/%0d fastest_run=%0d fastest_first_success_sweep=%0d fastest_first_success_cycle=%0d",
+                 global_success_count, K10_NUM_SEED_RUNS, global_fastest_success_run,
+                 global_fastest_success_sweep, global_fastest_success_cycle);
         for (int run_idx = 0; run_idx < K10_NUM_SEED_RUNS; run_idx++) begin
-            $display("[RUN_KSAT_10V40C_SUMMARY] run=%0d first_success_sweep=%0d best_satisfied=%0d/%0d final_satisfied=%0d/%0d",
-                     run_idx, run_first_success_sweep[run_idx], run_best_satisfied[run_idx],
+            $display("[RUN_KSAT_10V40C_SUMMARY] run=%0d first_success_sweep=%0d first_success_cycle=%0d best_satisfied=%0d/%0d final_satisfied=%0d/%0d",
+                     run_idx, run_first_success_sweep[run_idx], run_first_success_cycle[run_idx],
+                     run_best_satisfied[run_idx],
                      K10_NUM_CLAUSES, run_final_satisfied[run_idx], K10_NUM_CLAUSES);
         end
 

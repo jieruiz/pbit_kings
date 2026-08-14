@@ -1,0 +1,36 @@
+{
+  "name": "local_qubo_40x40",
+  "kind": "local_qubo",
+  "hardware": {
+    "kings_rows": 40,
+    "kings_cols": 40,
+    "rtl_cols": 40
+  },
+  "problem": {
+    "rows": 40,
+    "cols": 40,
+    "target_seed": 20260810,
+    "edge_strength": 1.0,
+    "bias_strength": 0.25
+  },
+  "run": {
+    "num_runs": 1,
+    "seed_master_start": 4601,
+    "seed_master_step": 10,
+    "run_seed": 314592,
+    "num_sweeps": 1000,
+    "num_majority": 5,
+    "num_i0_levels": 16,
+    "progress_print_step": 100,
+    "i0": {
+      "mode": "linear",
+      "start": 0.5,
+      "end": 6.0,
+      "table": "../../../../anneal_i0_64final_dec.csv"
+    }
+  },
+  "pass": {
+    "metric": "target_matches",
+    "target_acc": 0.95
+  }
+}

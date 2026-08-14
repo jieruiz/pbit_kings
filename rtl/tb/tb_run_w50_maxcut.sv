@@ -42,8 +42,10 @@ module tb_run_w50_maxcut;
     int unsigned live_sample_count;
     int unsigned live_best_cut;
     int unsigned live_best_sweep;
+    int unsigned live_best_cycle;
     int unsigned live_best_broken_chains;
     int unsigned live_final_cut;
+    int unsigned live_final_cycle;
     int unsigned live_final_broken_chains;
     integer live_history_fd;
 
@@ -461,18 +463,24 @@ module tb_run_w50_maxcut;
         live_sample_count = 0;
         live_best_cut = 0;
         live_best_sweep = 0;
+        live_best_cycle = 0;
         live_best_broken_chains = 0;
         live_final_cut = 0;
+        live_final_cycle = 0;
         live_final_broken_chains = 0;
         live_history_fd = $fopen("sim_run_w50_cut_history.csv", "w");
         if (live_history_fd != 0) begin
-            $fdisplay(live_history_fd, "sweep,current_cut,best_cut,best_sweep,broken_chains,best_broken_chains,i0_level,round,time");
+            $fdisplay(live_history_fd, "sweep,cycles_since_run_start,current_cut,best_cut,best_sweep,best_cycle,broken_chains,best_broken_chains,i0_level,round,time");
         end else begin
             $display("[RUN_W50_MAXCUT] could not open sim_run_w50_cut_history.csv");
         end
     endtask
 
-    task automatic record_live_sweep_score(input int unsigned sweep_idx, input bit force_print);
+    task automatic record_live_sweep_score(
+        input int unsigned sweep_idx,
+        input int unsigned cycles_since_run_start,
+        input bit force_print
+    );
         int unsigned cut_value;
         int unsigned broken_chain_count;
         bit improved;
@@ -492,6 +500,7 @@ module tb_run_w50_maxcut;
             if (improved) begin
                 live_best_cut = cut_value;
                 live_best_sweep = sweep_idx + 1;
+                live_best_cycle = cycles_since_run_start;
                 live_best_broken_chains = broken_chain_count;
             end
 
@@ -500,11 +509,13 @@ module tb_run_w50_maxcut;
             end
             live_sample_count++;
             live_final_cut = cut_value;
+            live_final_cycle = cycles_since_run_start;
             live_final_broken_chains = broken_chain_count;
 
             if (live_history_fd != 0) begin
-                $fdisplay(live_history_fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0t",
-                          sweep_idx + 1, cut_value, live_best_cut, live_best_sweep,
+                $fdisplay(live_history_fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0t",
+                          sweep_idx + 1, cycles_since_run_start, cut_value, live_best_cut,
+                          live_best_sweep, live_best_cycle,
                           broken_chain_count, live_best_broken_chains,
                           u_pbit_top.u_phase_ctrl_4color.i0_level_o,
                           u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q,
@@ -513,8 +524,9 @@ module tb_run_w50_maxcut;
 
             if (improved || force_print ||
                 (((sweep_idx + 1) % W50_PROGRESS_PRINT_STEP) == 0)) begin
-                $display("[RUN_W50_MAXCUT_SWEEP] sweep=%0d current_cut=%0d best_cut=%0d best_sweep=%0d broken=%0d best_broken=%0d i0=%0d round=%0d",
-                         sweep_idx + 1, cut_value, live_best_cut, live_best_sweep,
+                $display("[RUN_W50_MAXCUT_SWEEP] sweep=%0d cycles=%0d current_cut=%0d best_cut=%0d best_sweep=%0d best_cycle=%0d broken=%0d best_broken=%0d i0=%0d round=%0d",
+                         sweep_idx + 1, cycles_since_run_start, cut_value, live_best_cut,
+                         live_best_sweep, live_best_cycle,
                          broken_chain_count, live_best_broken_chains,
                          u_pbit_top.u_phase_ctrl_4color.i0_level_o,
                          u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q);
@@ -528,11 +540,13 @@ module tb_run_w50_maxcut;
         int unsigned poll_limit;
         logic [W50_NUM_I0_LEVELS-1:0] saw_round_mask;
         int unsigned completed_sweeps;
+        int unsigned run_cycles_since_start;
         bit saw_first_c0_start;
         bit final_sweep_recorded;
 
         saw_round_mask = '0;
         completed_sweeps = 0;
+        run_cycles_since_start = 0;
         saw_first_c0_start = 1'b0;
         final_sweep_recorded = 1'b0;
         init_live_score_history();
@@ -543,6 +557,9 @@ module tb_run_w50_maxcut;
             begin
                 while (u_pbit_top.u_phase_ctrl_4color.run_done_o !== 1'b1) begin
                     @(negedge clk);
+                    if (saw_first_c0_start && !final_sweep_recorded) begin
+                        run_cycles_since_start++;
+                    end
                     if (u_pbit_top.u_phase_ctrl_4color.run_busy_o === 1'b1) begin
                         if (u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q < W50_NUM_I0_LEVELS) begin
                             saw_round_mask[u_pbit_top.u_phase_ctrl_4color.sweep_round_cnt_q] = 1'b1;
@@ -550,14 +567,16 @@ module tb_run_w50_maxcut;
                     end
                     if (u_pbit_top.phase_start_c0_w === 1'b1) begin
                         if (saw_first_c0_start) begin
-                            record_live_sweep_score(completed_sweeps, 1'b0);
+                            record_live_sweep_score(completed_sweeps, run_cycles_since_start, 1'b0);
                             completed_sweeps++;
                         end else begin
+                            // Count only the hardware run window: cycle 0 is the first C0 start after RUN_START.
+                            run_cycles_since_start = 0;
                             saw_first_c0_start = 1'b1;
                         end
                     end
                     if ((u_pbit_top.u_phase_ctrl_4color.run_done_d === 1'b1) && !final_sweep_recorded) begin
-                        record_live_sweep_score(completed_sweeps, 1'b1);
+                        record_live_sweep_score(completed_sweeps, run_cycles_since_start, 1'b1);
                         completed_sweeps++;
                         final_sweep_recorded = 1'b1;
                     end
@@ -596,8 +615,9 @@ module tb_run_w50_maxcut;
             $error("[RUN_W50_MAXCUT] live score sample count mismatch: sampled=%0d expected=%0d",
                    completed_sweeps, W50_NUM_SWEEPS);
         end
-        $display("[RUN_W50_MAXCUT] live_best_cut=%0d best_sweep=%0d live_final_cut=%0d live_final_broken=%0d",
-                 live_best_cut, live_best_sweep, live_final_cut, live_final_broken_chains);
+        $display("[RUN_W50_MAXCUT] live_best_cut=%0d best_sweep=%0d best_cycle=%0d live_final_cut=%0d final_cycle=%0d live_final_broken=%0d",
+                 live_best_cut, live_best_sweep, live_best_cycle,
+                 live_final_cut, live_final_cycle, live_final_broken_chains);
     endtask
 
     task automatic latch_snapshot_page(input int unsigned page);

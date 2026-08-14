@@ -1,0 +1,38 @@
+{
+  "name": "ksat_10v40c",
+  "kind": "ksat",
+  "num_variables": 10,
+  "num_logical": 50,
+  "lits_per_clause": 3,
+  "inputs": {
+    "j": "../../../../../p-bit_withbias/three_sat_10v40c_tile_lfsr_multirun_7_bit_quant/three_sat_10v40c_J50.txt",
+    "bias": "../../../../../p-bit_withbias/three_sat_10v40c_tile_lfsr_multirun_7_bit_quant/three_sat_10v40c_bias50.txt",
+    "clauses": "../../../../../p-bit_withbias/three_sat_10v40c_tile_lfsr_multirun_7_bit_quant/three_sat_10v40c_clauses.txt",
+    "mapping": "../../../../../KingsGraph_Embedding_W50_Best_19x19.json"
+  },
+  "hardware": {
+    "kings_rows": 20,
+    "kings_cols": 19,
+    "rtl_cols": 40
+  },
+  "run": {
+    "num_runs": 10,
+    "seed_master_start": 2501,
+    "seed_master_step": 10,
+    "run_seed": 314592,
+    "num_sweeps": 500,
+    "num_majority": 5,
+    "num_i0_levels": 16,
+    "progress_print_step": 50,
+    "i0": {
+      "mode": "fixed",
+      "value": 1.0,
+      "end": 6.0,
+      "table": "../../../../anneal_i0_64final_dec.csv"
+    }
+  },
+  "pass": {
+    "metric": "best_satisfied",
+    "min": 40
+  }
+}

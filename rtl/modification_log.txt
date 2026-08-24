@@ -1,0 +1,5 @@
+1. num_sweeps num_majority，sweep_interval实际值为配置值+1
+2. lfsr共用后，色块1计算完成后的state会作为下一色块的state初值
+3.error status增加seed_row_oor和seed_col_oor信号
+4.node_cfg删除seed_valid域段，clamp_valid和bias_valid域段位置相应更改
+5.node_cmd增加apply_seed/clear_seed_scope_en/readback_seed域段，其他域段位置相应更改

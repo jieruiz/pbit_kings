@@ -8,6 +8,7 @@ module phase_ctrl_4color (
 
     input  logic cfg_done_i,
     input  logic run_start_pulse_i,
+    input  logic run_done_clr_pulse_i,
     input  logic [NUM_SWEEP_WIDTH-1:0] num_sweeps_i,
 
     input  wire [I0_LEVEL_WIDTH-1:0] i0_level_i[SWEEP_ROUND_NUM],
@@ -111,7 +112,7 @@ module phase_ctrl_4color (
 
             S_WAIT_C3: begin
                 if (all_done_c3_i) begin
-                    if (sweep_cnt_q == (num_sweeps_i - 1)) begin
+                    if (sweep_cnt_q == num_sweeps_i) begin
                         state_d = S_IDLE;
                     end else begin
                         state_d = S_WAIT_C0;
@@ -149,8 +150,8 @@ module phase_ctrl_4color (
     // sweep interval counter
     // ------------------------------------------------------------
     assign sweep_interval_cnt_d  = (state_q == S_IDLE)? {SWEEP_INTERVAL_WIDTH{1'b0}}:
-                                   (state_q == S_WAIT_C3)? (sweep_interval_cnt_q == (sweep_interval_i[sweep_round_cnt_q] - 1))? {SWEEP_INTERVAL_WIDTH{1'b0}}:
-                                                                                                                                sweep_interval_cnt_q + {{(SWEEP_INTERVAL_WIDTH-1){1'b0}}, 1'b1}:
+                                   (state_q == S_WAIT_C3)? (sweep_interval_cnt_q == (sweep_interval_i[sweep_round_cnt_q]))? {SWEEP_INTERVAL_WIDTH{1'b0}}:
+                                                                                                                            sweep_interval_cnt_q + {{(SWEEP_INTERVAL_WIDTH-1){1'b0}}, 1'b1}:
                                                            sweep_interval_cnt_q;
     assign sweep_interval_cnt_en = ((state_q == S_IDLE) && (state_d == S_WAIT_C0)) || ((state_q == S_WAIT_C3) && (state_d == S_WAIT_C0));
 
@@ -161,22 +162,15 @@ module phase_ctrl_4color (
     logic sweep_round_is_last;
     logic [SWEEP_ROUND_WIDTH-1:0] sweep_round_next;
 
-   assign sweep_round_is_last =
-    (sweep_round_cnt_q == SWEEP_ROUND_WIDTH'(SWEEP_ROUND_NUM - 1));
-
-   assign sweep_round_next =
-    sweep_round_cnt_q + {{(SWEEP_ROUND_WIDTH-1){1'b0}}, 1'b1};//boundary 
-
-   assign sweep_round_cnt_d =
-    (state_q == S_IDLE) ? {SWEEP_ROUND_WIDTH{1'b0}} :
-    (state_q == S_WAIT_C3) ?
-        (sweep_interval_cnt_q == (sweep_interval_i[sweep_round_cnt_q] - 1'b1)) ?
-            sweep_round_is_last ? {SWEEP_ROUND_WIDTH{1'b0}} :
-            (|sweep_interval_i[sweep_round_next]) ? sweep_round_next :
-                                                     {SWEEP_ROUND_WIDTH{1'b0}} :
-            sweep_round_cnt_q :
-    sweep_round_cnt_q;
-    assign sweep_round_cnt_en = ((state_q == S_IDLE) && (state_d == S_WAIT_C0)) || ((state_q == S_WAIT_C3) && (state_d == S_WAIT_C0));
+    assign sweep_round_is_last = (sweep_round_cnt_q == SWEEP_ROUND_WIDTH'(SWEEP_ROUND_NUM - 1));
+    assign sweep_round_next    = sweep_round_cnt_q + {{(SWEEP_ROUND_WIDTH-1){1'b0}}, 1'b1};//boundary 
+    assign sweep_round_cnt_d   =
+    (state_q == S_IDLE)? {SWEEP_ROUND_WIDTH{1'b0}}:
+                         (state_q == S_WAIT_C3)? (sweep_interval_cnt_q == sweep_interval_i[sweep_round_cnt_q])? sweep_round_is_last? {SWEEP_ROUND_WIDTH{1'b0}}:
+                                                                                                                                     sweep_round_next:
+                                                                                                                sweep_round_cnt_q:
+                                                 sweep_round_cnt_q;
+    assign sweep_round_cnt_en  = ((state_q == S_IDLE) && (state_d == S_WAIT_C0)) || ((state_q == S_WAIT_C3) && (state_d == S_WAIT_C0));
 
     // ------------------------------------------------------------
     // run_busy
@@ -189,7 +183,7 @@ module phase_ctrl_4color (
     // ------------------------------------------------------------
     // run_done
     // ------------------------------------------------------------
-    assign run_done_d = ((state_q == S_IDLE) && (state_d == S_WAIT_C0))? 1'b0:
+    assign run_done_d = (run_done_clr_pulse_i || ((state_q == S_IDLE) && (state_d == S_WAIT_C0)))? 1'b0:
                         ((state_q == S_WAIT_C3) && (state_d == S_IDLE))? 1'b1:
                         run_done_q;
     assign run_done_o = run_done_q;

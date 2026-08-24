@@ -10,22 +10,18 @@ module pbit_node (
     // This is already color-decoded by array-level wiring.
     // ------------------------------------------------------------
     input  logic                          local_start_i,
-    input  logic                          run_done_clr_pulse_i,
-    input  logic [I0_LEVEL_WIDTH-1:0]     i0_level_i,
     input  logic [NUM_MAJORITY_WIDTH-1:0] num_majority_i,
     // ------------------------------------------------------------
     // Node configuration interface.
     // Used during CONFIG phase.
-    // ------------------------------------------------------------
-    input  logic [NODE_SEED_WIDTH-1:0]           global_cfg_seed_i,      
+    // ------------------------------------------------------------     
     input  logic [NODE_CFG_INIT_SPIN_WIDTH-1:0]  global_cfg_init_spin_i, 
     input  logic [NODE_CFG_CLAMP_EN_WIDTH-1:0]   global_cfg_clamp_en_i,  
     input  logic [NODE_CFG_CLAMP_SPIN_WIDTH-1:0] global_cfg_clamp_spin_i,
     input  logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0]  global_cfg_bias_sign_i, 
     input  logic [NODE_CFG_BIAS_PROB_WIDTH-1:0]  global_cfg_bias_prob_i,
     input  logic                                 global_cfg_vld_i,
- 
-    input  logic [NODE_SEED_WIDTH-1:0]           row_cfg_seed_i,      
+      
     input  logic [NODE_CFG_INIT_SPIN_WIDTH-1:0]  row_cfg_init_spin_i, 
     input  logic [NODE_CFG_CLAMP_EN_WIDTH-1:0]   row_cfg_clamp_en_i,  
     input  logic [NODE_CFG_CLAMP_SPIN_WIDTH-1:0] row_cfg_clamp_spin_i,
@@ -34,19 +30,20 @@ module pbit_node (
     input  logic                                 row_cfg_vld_i,
                                  
     input  logic                                 local_cfg_node_we_i       ,
-    input  logic                                 local_cfg_node_seed_we_i  ,
     input  logic                                 local_cfg_clr_pulse_i     ,
     input  logic                                 local_cfg_clr_all_pulse_i ,
     input  logic [NODE_CFG_PACKED_WIDTH-1:0]     local_node_cfg_i          ,
-    input  logic [NODE_SEED_WIDTH-1:0]           local_cfg_seed_i          ,
 
 
-    output logic [NODE_CFG_W-1:0]               local_node_rcfg_o,
-    output logic [NODE_SEED_WIDTH-1:0]          local_node_rseed_o,
+    output logic [NODE_CFG_W-1:0]                local_node_rcfg_o,
 
-    input logic                                 cfg_node_load_i,
+    input logic                                  cfg_node_load_i,
 
     // ------------------------------------------------------------
+    // Shared 32_bit lfsr random int
+    // ------------------------------------------------------------
+    input logic [31:0] rnd32_i,
+    
     // Neighbor spins
     // ------------------------------------------------------------
     input logic neighbor_spin_n_i,
@@ -95,11 +92,15 @@ module pbit_node (
     input logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0] edge_prob_nw_i,
 
     // ------------------------------------------------------------
+    // tah LUT port
+    // ------------------------------------------------------------
+    output logic signed [MACSUM_WIDTH-1:0]     macsum_o,
+    input  logic [LUT_WIDTH-1:0]               p_up_thr_i,
+    
+    // ------------------------------------------------------------
     // Runtime outputs
     // ------------------------------------------------------------
-    output logic       spin_o,
-    output logic       busy_o,
-    output logic       done_hold_o
+    output logic       spin_o
 );
     typedef enum logic [1:0] {
         S_IDLE,
@@ -185,7 +186,6 @@ module pbit_node (
     logic                           macsum_en;
     logic [NUM_MAJORITY_MAX-1:0]    votes_q, votes_d;
     logic                           votes_en;
-    logic                           done_hold_q, done_hold_d;
     // ------------------------------------------------------------
     // Clamp and bias registers.
     // ------------------------------------------------------------
@@ -219,7 +219,9 @@ module pbit_node (
                                            bias_prob_q:
                           bias_prob_q;
     assign bias_prob_en = local_cfg_node_we_i | cfg_node_load_i;
-    assign local_cfg_vld_d = local_cfg_node_we_i & !local_cfg_clr_pulse_i & !local_cfg_clr_all_pulse_i;
+    assign local_cfg_vld_d = local_cfg_node_we_i? 1'b1:
+                             local_cfg_clr_pulse_i | local_cfg_clr_all_pulse_i? 1'b0:
+                             local_cfg_vld_q;
     assign local_node_rcfg_o = {bias_prob_q, bias_sign_q, clamp_spin_q, clamp_en_q, spin_q};
 
     dffsr #(.WIDTH(NODE_CFG_CLAMP_EN_WIDTH)
@@ -253,42 +255,46 @@ module pbit_node (
         .q_o(bias_prob_q)
     );
 
-    dff #(.WIDTH(1)
+    dffsr #(.WIDTH(1)
     ) local_cfg_vld_ff (
         .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(soft_rstn_i),
         .d_i(local_cfg_vld_d),
         .q_o(local_cfg_vld_q)
     );
 
-    // ------------------------------------------------------------
-    // 32-bit lfsr
-    // ------------------------------------------------------------
-    assign local_node_rseed_o = rnd32_w;
-    assign lfsr_en_w =
-        (!clamp_en_q) &&
-        (
-            (state_d == S_EDGE) ||
-            (state_d == S_PBIT)
-        );
-
-    lfsr32_rng32 u_lfsr32_rng32 (
-        .clk         (clk),
-        .rst_n       (rst_n),
-        .soft_rstn_i (soft_rstn_i),
-
-        .local_seed_we_i (local_cfg_node_seed_we_i),
-        .cfg_node_load_i (cfg_node_load_i),
-        .global_cfg_seed_i (global_cfg_seed_i),
-        .global_cfg_vld_i (global_cfg_vld_i),
-        .row_cfg_seed_i (row_cfg_seed_i),
-        .row_cfg_vld_i (row_cfg_vld_i),
-        .local_node_cfg_i (local_node_cfg_i),
-        .local_cfg_seed_i (local_cfg_seed_i),
-        .local_cfg_vld_i (local_cfg_vld_q),
-        .en_i        (lfsr_en_w),
-        .rnd32_o     (rnd32_w),
-        .rnd_valid_o ()
-    );
+   // // TODO
+   // // ------------------------------------------------------------
+   // // 32-bit lfsr
+   // // ------------------------------------------------------------
+   assign rnd32_w = rnd32_i;
+   // assign local_node_rseed_o = rnd32_w;
+   // assign lfsr_en_w =
+   //     (!clamp_en_q) &&
+   //     (
+   //         (state_d == S_EDGE) ||
+   //         (state_d == S_PBIT)
+   //     );
+//
+   // lfsr32_rng32 u_lfsr32_rng32 (
+   //     .clk         (clk),
+   //     .rst_n       (rst_n),
+   //     .soft_rstn_i (soft_rstn_i),
+//
+   //     .local_seed_we_i (local_cfg_node_seed_we_i),
+   //     .cfg_node_load_i (cfg_node_load_i),
+   //     .global_cfg_seed_i (global_cfg_seed_i),
+   //     .global_cfg_vld_i (global_cfg_vld_i),
+   //     .row_cfg_seed_i (row_cfg_seed_i),
+   //     .row_cfg_vld_i (row_cfg_vld_i),
+   //     .local_node_cfg_i (local_node_cfg_i),
+   //     .local_cfg_seed_i (local_cfg_seed_i),
+   //     .local_cfg_vld_i (local_cfg_vld_q),
+   //     .en_i        (lfsr_en_w),
+   //     .rnd32_o     (rnd32_w),
+   //     .rnd_valid_o ()
+   // );
 
     // ------------------------------------------------------------
     // 8 edge probability compares
@@ -393,11 +399,8 @@ module pbit_node (
     // ------------------------------------------------------------
     // tanh LUT
     // ------------------------------------------------------------
-    tanh_lut_comb u_tanh_lut_comb (
-        .i0_level_i (i0_level_i),
-        .h_i        (macsum_q),
-        .p_up_thr_o (p_up_thr_w)
-    );
+    assign macsum_o   = macsum_q;
+    assign p_up_thr_w = p_up_thr_i;
 
     // ------------------------------------------------------------
     // p-bit proposal random
@@ -438,7 +441,7 @@ module pbit_node (
                 state_d = S_PBIT;
             end
             S_PBIT: begin
-                if(trial_idx_q == num_majority_i-1) state_d = S_MAJORITY;
+                if(trial_idx_q == num_majority_i) state_d = S_MAJORITY;
                 else state_d = S_EDGE;
             end
             S_MAJORITY: begin
@@ -469,11 +472,6 @@ module pbit_node (
     assign macsum_q = $signed(macsum_q_raw);
     assign votes_d = (state_q == S_PBIT)? {votes_q[NUM_MAJORITY_MAX-2:0], proposed_spin_w}: {NUM_MAJORITY_MAX{1'b0}};
     assign votes_en = (state_q == S_PBIT) || (state_q == S_IDLE);
-    assign busy_o = !clamp_en_q && (state_q != S_IDLE);
-    assign done_hold_o = done_hold_q;
-    assign done_hold_d = (~local_start_i & ~run_done_clr_pulse_i)? 1'b0:
-                         (state_q == S_MAJORITY)? 1'b1:
-                         done_hold_q;
 
     always_ff @(posedge clk or negedge rst_n) begin : state_ff
         if(~rst_n) begin
@@ -516,15 +514,6 @@ module pbit_node (
         .en_i(votes_en),
         .d_i(votes_d),
         .q_o(votes_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) done_hold_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(soft_rstn_i),
-        .d_i(done_hold_d),
-        .q_o(done_hold_q)
     );
 endmodule
 `endif

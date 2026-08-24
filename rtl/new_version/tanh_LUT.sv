@@ -4,9 +4,14 @@ import pbit_pkg::*;
 
 module tanh_lut_comb (
     input  logic  [I0_LEVEL_WIDTH-1:0]     i0_level_i,
-    input  logic signed [MACSUM_WIDTH-1:0] h_i,
+    input  logic signed [MACSUM_WIDTH-1:0] h0_i,
+    input  logic signed [MACSUM_WIDTH-1:0] h1_i,
+    input  logic signed [MACSUM_WIDTH-1:0] h2_i,
+    input  logic signed [MACSUM_WIDTH-1:0] h3_i,
+    input  logic [3:0]                     tanh_sel_i,
     output logic  [LUT_WIDTH-1:0]          p_up_thr_o
 );
+    logic signed [MACSUM_WIDTH-1:0] h_sel;
     logic [MACSUM_WIDTH-2:0]  h_abs;
     logic [LUT_WIDTH-1:0] pos_thr;
 
@@ -1050,35 +1055,45 @@ module tanh_lut_comb (
     endfunction
 
     always @(*) begin
-        case(h_i)
-            -5'sd16: h_abs = 4'd9;
-            -5'sd15: h_abs = 4'd9;
-            -5'sd14: h_abs = 4'd9;
-            -5'sd13: h_abs = 4'd9;
-            -5'sd12: h_abs = 4'd9;
-            -5'sd11: h_abs = 4'd9;
-            -5'sd10: h_abs = 4'd9;
-            -5'sd9 : h_abs = 4'd9;
-            -5'sd8 : h_abs = 4'd8;
-            -5'sd7 : h_abs = 4'd7;
-            -5'sd6 : h_abs = 4'd6;
-            -5'sd5 : h_abs = 4'd5;
-            -5'sd4 : h_abs = 4'd4;        
-            -5'sd3 : h_abs = 4'd3;
-            -5'sd2 : h_abs = 4'd2;
-            -5'sd1 : h_abs = 4'd1;
-            5'sd15 : h_abs = 4'd9;
-            5'sd14 : h_abs = 4'd9;
-            5'sd13 : h_abs = 4'd9;
-            5'sd12 : h_abs = 4'd9;
-            5'sd11 : h_abs = 4'd9;
-            5'sd10 : h_abs = 4'd9;
-            default: h_abs = h_i[MACSUM_WIDTH-2:0];
+        case(tanh_sel_i)
+        4'b0001: h_sel = h0_i;
+        4'b0010: h_sel = h1_i;
+        4'b0100: h_sel = h2_i;
+        4'b1000: h_sel = h3_i;
+        default: h_sel = $signed(MACSUM_WIDTH'(0));
+        endcase
+    end
+
+    always @(*) begin
+        case(h_sel)
+            -5'sd16: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd15: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd14: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd13: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd12: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd11: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd10: h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd9 : h_abs = (MACSUM_WIDTH-1)'(9);
+            -5'sd8 : h_abs = (MACSUM_WIDTH-1)'(8);
+            -5'sd7 : h_abs = (MACSUM_WIDTH-1)'(7);
+            -5'sd6 : h_abs = (MACSUM_WIDTH-1)'(6);
+            -5'sd5 : h_abs = (MACSUM_WIDTH-1)'(5);
+            -5'sd4 : h_abs = (MACSUM_WIDTH-1)'(4);        
+            -5'sd3 : h_abs = (MACSUM_WIDTH-1)'(3);
+            -5'sd2 : h_abs = (MACSUM_WIDTH-1)'(2);
+            -5'sd1 : h_abs = (MACSUM_WIDTH-1)'(1);
+            5'sd15 : h_abs = (MACSUM_WIDTH-1)'(9);
+            5'sd14 : h_abs = (MACSUM_WIDTH-1)'(9);
+            5'sd13 : h_abs = (MACSUM_WIDTH-1)'(9);
+            5'sd12 : h_abs = (MACSUM_WIDTH-1)'(9);
+            5'sd11 : h_abs = (MACSUM_WIDTH-1)'(9);
+            5'sd10 : h_abs = (MACSUM_WIDTH-1)'(9);
+            default: h_abs = h_sel[MACSUM_WIDTH-2:0];
         endcase
     end
 
     assign pos_thr = tanh_pos_thr(i0_level_i, h_abs);
-    assign p_up_thr_o = h_i[MACSUM_WIDTH-1]? 16'hFFFF - pos_thr: pos_thr;
+    assign p_up_thr_o = h_sel[MACSUM_WIDTH-1]? 16'hFFFF - pos_thr: pos_thr;
 
     // tanh symmetry:
     // p(-h) = 1 - p(h)

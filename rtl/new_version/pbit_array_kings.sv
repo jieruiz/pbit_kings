@@ -28,23 +28,26 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     input  logic                                 glb_soft_rstn_i,
     input  logic [NUM_MAJORITY_WIDTH-1:0]        num_majority_i,
-    input  logic                                 run_done_clr_pulse_i,
     // ------------------------------------------------------------
     // Node configuration.
     // ------------------------------------------------------------
     input  logic [NODE_CFG_W-1:0]                global_node_cfg_i,
     input  logic [NODE_SEED_WIDTH-1:0]           global_node_seed_i,
     input  logic                                 global_node_cfg_vld_i,
+    input  logic                                 global_node_seed_vld_i,
 
     input  wire  [NODE_CFG_W-1:0]                row_node_cfg_i[0:ROWS-1],
-    input  wire  [NODE_SEED_WIDTH-1:0]           row_node_seed_i[0:ROWS-1],
+    input  wire  [NODE_SEED_WIDTH-1:0]           row_node_seed_i[0:SEED_ROWS-1],
     input  logic [ROWS-1:0]                      row_node_cfg_vld_i,
+    input  logic [SEED_ROWS-1:0]                 row_node_seed_vld_i,
 
-    input  logic                                 local_node_we_pulse_i,
-    input  logic                                 local_node_clr_pulse_i,
-    input  logic [TARGET_MODE_WIDTH-1:0]         cfg_node_target_mode_i,
-    input  logic [NODE_TARGET_ROW_WIDTH-1:0]     cfg_node_row_i,
-    input  logic [NODE_TARGET_COL_WIDTH-1:0]     cfg_node_col_i,
+    input  logic                                 local_node_cfg_we_pulse_i,
+    input  logic                                 local_node_cfg_clr_pulse_i,
+    input  logic                                 local_node_seed_we_pulse_i,
+    input  logic                                 local_node_seed_clr_pulse_i,
+    input  logic [TARGET_MODE_WIDTH-1:0]         node_target_mode_i,
+    input  logic [NODE_TARGET_ROW_WIDTH-1:0]     node_row_i,
+    input  logic [NODE_TARGET_COL_WIDTH-1:0]     node_col_i,
     input  logic [NODE_CFG_PACKED_WIDTH-1:0]     local_node_cfg_i,
     input  logic [NODE_SEED_WIDTH-1:0]           local_node_seed_i,
     input  logic                                 clr_local_all_pulse_i,
@@ -60,7 +63,7 @@ module pbit_array_kings (
     // 2 = DSE : (r,c) -- (r+1,c+1)
     // 3 = DSW : (r,c) -- (r+1,c-1)
     // ------------------------------------------------------------
-    input  logic                                 cfg_edge_we_i,
+    input  logic                                 cfg_edge_we_pulse_i,
     input  logic                                 cfg_edge_clr_pulse_i,
     input  logic [EDGE_TYPE_WIDTH-1:0]           cfg_edge_type_i,
     input  logic [EDGE_TARGET_ROW_WIDTH-1:0]     cfg_edge_row_i,
@@ -70,7 +73,8 @@ module pbit_array_kings (
     input  logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] cfg_edge_valid_i,
 
     //Node readback IO 
-    input  logic                                 node_rdata_pulse_i,
+    input  logic                                 node_rdata_cfg_pulse_i,
+    input  logic                                 node_rdata_seed_pulse_i,
     output logic [NODE_CFG_W-1:0]                node_rdata_cfg_o,
     output logic [NODE_SEED_WIDTH-1:0]           node_rdata_seed_o,
  
@@ -112,7 +116,7 @@ module pbit_array_kings (
     logic [NODE_CFG_CLAMP_SPIN_WIDTH-1:0] row_node_clamp_spin_w[ROWS];
     logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0]  row_node_bias_sign_w[ROWS];
     logic [NODE_CFG_BIAS_PROB_WIDTH-1:0]  row_node_bias_prob_w[ROWS];
-    logic [NODE_SEED_WIDTH-1:0]           row_node_seed_w[ROWS];
+    logic [NODE_SEED_WIDTH-1:0]           row_node_seed_w[SEED_ROWS];
 
     logic [NODE_SEED_WIDTH-1:0]           local_node_seed_w;
 
@@ -130,6 +134,9 @@ module pbit_array_kings (
             assign row_node_clamp_spin_w[r] = row_node_cfg_i[r][NODE_CFG_CLAMP_SPIN_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_CLAMP_SPIN_PACKED_LSB-NODE_CFG_VALID_W];
             assign row_node_bias_sign_w[r]  = row_node_cfg_i[r][NODE_CFG_BIAS_SIGN_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_SIGN_PACKED_LSB-NODE_CFG_VALID_W];
             assign row_node_bias_prob_w[r]  = row_node_cfg_i[r][NODE_CFG_BIAS_PROB_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_PROB_PACKED_LSB-NODE_CFG_VALID_W];
+        end
+        
+        for(r = 0; r < SEED_ROWS; r++) begin: ROW_NODE_SEED_DECODE
             assign row_node_seed_w[r]       = row_node_seed_i[r];
         end
     endgenerate
@@ -147,7 +154,7 @@ module pbit_array_kings (
     // Node readback
     // ------------------------------------------------------------
     logic [NODE_CFG_W-1:0] local_node_rcfg_w[ROWS][COLS];
-    logic [NODE_SEED_WIDTH-1:0] local_node_rseed_w[ROWS][COLS];
+    logic [NODE_SEED_WIDTH-1:0] local_node_rseed_w[SEED_ROWS][SEED_COLS];
     logic [NODE_CFG_W-1:0] node_rdata_cfg_q, node_rdata_cfg_d;
     logic node_rdata_cfg_en;
     logic [NODE_SEED_WIDTH-1:0] node_rdata_seed_q, node_rdata_seed_d;
@@ -162,6 +169,7 @@ module pbit_array_kings (
     logic edge_rdata_cfg_en;
 
     assign edge_rdata_cfg_o = edge_rdata_cfg_q;
+
     // ------------------------------------------------------------
     // Directional wires into each p-bit
     // ------------------------------------------------------------
@@ -202,6 +210,18 @@ module pbit_array_kings (
     logic nbr_nw [0:ROWS-1][0:COLS-1];
 
     // ------------------------------------------------------------
+    // lfsr32_rng32
+    // ------------------------------------------------------------
+    logic lfsr_en_w;
+    logic [NODE_SEED_WIDTH-1:0] lfsr_rnd_32_w[0:SEED_ROWS-1][0:SEED_COLS-1];
+
+    // ------------------------------------------------------------
+    // tanh LUT wires
+    // ------------------------------------------------------------
+    logic signed [MACSUM_WIDTH-1:0] macsum_w[0:ROWS-1][0:COLS-1];
+    logic [3:0]                     tanh_sel_w;
+    logic [LUT_WIDTH-1:0]           p_up_thr_w[0:TANH_ROWS-1][0:TANH_COLS-1];
+    // ------------------------------------------------------------
     // Done signal counter
     // 2*num_majority+2
     // ------------------------------------------------------------
@@ -209,6 +229,11 @@ module pbit_array_kings (
     logic done_c1_q, done_c1_d;
     logic done_c2_q, done_c2_d;
     logic done_c3_q, done_c3_d;
+
+    logic is_c0_q, is_c0_d;
+    logic is_c1_q, is_c1_d;
+    logic is_c2_q, is_c2_d;
+    logic is_c3_q, is_c3_d;
 
     logic [NUM_MAJORITY_WIDTH+1:0] done_c0_cnt_q, done_c0_cnt_d;
     logic done_c0_cnt_en;
@@ -233,56 +258,56 @@ module pbit_array_kings (
             for (c = 0; c < COLS; c = c + 1) begin : GEN_BOUND_C
 
                 if (r == 0) begin : N
-                    assign prob_n[r][c]  = 4'd0;
+                    assign prob_n[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_n[r][c]  = 1'b1;
                     assign valid_n[r][c] = 1'b0;
                     assign nbr_n[r][c]   = 1'b0;
                 end
 
                 if (r == ROWS-1) begin : S
-                    assign prob_s[r][c]  = 4'd0;
+                    assign prob_s[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_s[r][c]  = 1'b1;
                     assign valid_s[r][c] = 1'b0;
                     assign nbr_s[r][c]   = 1'b0;
                 end
 
                 if (c == 0) begin : W
-                    assign prob_w[r][c]  = 4'd0;
+                    assign prob_w[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_w[r][c]  = 1'b1;
                     assign valid_w[r][c] = 1'b0;
                     assign nbr_w[r][c]   = 1'b0;
                 end
 
                 if (c == COLS-1) begin : E
-                    assign prob_e[r][c]  = 4'd0;
+                    assign prob_e[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_e[r][c]  = 1'b1;
                     assign valid_e[r][c] = 1'b0;
                     assign nbr_e[r][c]   = 1'b0;
                 end
 
                 if ((r == 0) || (c == COLS-1)) begin : NE
-                    assign prob_ne[r][c]  = 4'd0;
+                    assign prob_ne[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_ne[r][c]  = 1'b1;
                     assign valid_ne[r][c] = 1'b0;
                     assign nbr_ne[r][c]   = 1'b0;
                 end
 
                 if ((r == 0) || (c == 0)) begin : NW
-                    assign prob_nw[r][c]  = 4'd0;
+                    assign prob_nw[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_nw[r][c]  = 1'b1;
                     assign valid_nw[r][c] = 1'b0;
                     assign nbr_nw[r][c]   = 1'b0;
                 end
 
                 if ((r == ROWS-1) || (c == COLS-1)) begin : SE
-                    assign prob_se[r][c]  = 4'd0;
+                    assign prob_se[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_se[r][c]  = 1'b1;
                     assign valid_se[r][c] = 1'b0;
                     assign nbr_se[r][c]   = 1'b0;
                 end
 
                 if ((r == ROWS-1) || (c == 0)) begin : SW
-                    assign prob_sw[r][c]  = 4'd0;
+                    assign prob_sw[r][c]  = {EDGE_CFG_EDGE_PROB_WIDTH{1'b0}};
                     assign sign_sw[r][c]  = 1'b1;
                     assign valid_sw[r][c] = 1'b0;
                     assign nbr_sw[r][c]   = 1'b0;
@@ -291,7 +316,7 @@ module pbit_array_kings (
             end
         end
     endgenerate
-        // ------------------------------------------------------------
+    // ------------------------------------------------------------
     // Instantiate all p-bit nodes.
     // Compile-time color:
     // color = 2*(row%2) + (col%2)
@@ -303,36 +328,36 @@ module pbit_array_kings (
                 localparam integer CELL_COLOR = (r % 2) * 2 + (c % 2);
 
                 logic local_start_w;
-                logic local_node_we_match_w;
-                logic local_node_clr_pulse_match_w;
-
+                logic local_node_cfg_we_match_w;
+                logic local_node_cfg_clr_pulse_match_w;
+                logic p_up_thr_match_w;
+                logic [31:0] lfsr_rnd_32_match_w;
                 assign local_start_w =
                     (CELL_COLOR == 0) ? phase_start_c0_i :
                     (CELL_COLOR == 1) ? phase_start_c1_i :
                     (CELL_COLOR == 2) ? phase_start_c2_i :
                                         phase_start_c3_i;
 
-                assign local_node_we_match_w =
-                    local_node_we_pulse_i &&
-                    (cfg_node_row_i == r[4:0]) &&
-                    (cfg_node_col_i == c[4:0]);
+                assign local_node_cfg_we_match_w =
+                    local_node_cfg_we_pulse_i &&
+                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
+                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
 
-                assign local_node_clr_pulse_match_w =
-                    local_node_clr_pulse_i &&
-                    (cfg_node_row_i == r[4:0]) &&
-                    (cfg_node_col_i == c[4:0]);
+                assign local_node_cfg_clr_pulse_match_w =
+                    local_node_cfg_clr_pulse_i &&
+                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
+                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
 
+                assign p_up_thr_match_w = p_up_thr_w[r/2][c/2];
+                assign lfsr_rnd_32_match_w = lfsr_rnd_32_w[r/2][c/2];
                 pbit_node u_pbit_node (
                     .clk                        (clk),
                     .rst_n                      (rst_n),
                     .soft_rstn_i                (glb_soft_rstn_i),
        
                     .local_start_i              (local_start_w),
-                    .run_done_clr_pulse_i       (run_done_clr_pulse_i),
-                    .i0_level_i                 (i0_level_i),
                     .num_majority_i             (num_majority_i),
 
-                    .global_cfg_seed_i          (global_node_seed_w),
                     .global_cfg_init_spin_i     (global_node_init_spin_w),
                     .global_cfg_clamp_en_i      (global_node_clamp_en_w),
                     .global_cfg_clamp_spin_i    (global_node_clamp_spin_w),
@@ -340,7 +365,6 @@ module pbit_array_kings (
                     .global_cfg_bias_prob_i     (global_node_bias_prob_w),
                     .global_cfg_vld_i           (global_node_cfg_vld_i),
 
-                    .row_cfg_seed_i             (row_node_seed_w[r]),
                     .row_cfg_init_spin_i        (row_node_init_spin_w[r]),
                     .row_cfg_clamp_en_i         (row_node_clamp_en_w[r]),
                     .row_cfg_clamp_spin_i       (row_node_clamp_spin_w[r]),
@@ -348,18 +372,17 @@ module pbit_array_kings (
                     .row_cfg_bias_prob_i        (row_node_bias_prob_w[r]),
                     .row_cfg_vld_i              (row_node_cfg_vld_i[r]),
 
-                    .local_cfg_node_we_i        (local_node_we_match_w),
-                    .local_cfg_node_seed_we_i   (local_node_we_match_w),
-                    .local_cfg_clr_pulse_i      (local_node_clr_pulse_match_w),
+                    .local_cfg_node_we_i        (local_node_cfg_we_match_w),
+                    .local_cfg_clr_pulse_i      (local_node_cfg_clr_pulse_match_w),
                     .local_cfg_clr_all_pulse_i  (clr_local_all_pulse_i),
                     .local_node_cfg_i           (local_node_cfg_i),
-                    .local_cfg_seed_i           (local_node_seed_w),
 
                     .local_node_rcfg_o          (local_node_rcfg_w[r][c]),
-                    .local_node_rseed_o         (local_node_rseed_w[r][c]),
 
                     .cfg_node_load_i            (node_load_pulse_i),
     
+                    .rnd32_i                    (lfsr_rnd_32_match_w),
+
                     .neighbor_spin_n_i          (nbr_n[r][c]),
                     .neighbor_spin_ne_i         (nbr_ne[r][c]),
                     .neighbor_spin_e_i          (nbr_e[r][c]),
@@ -395,16 +418,77 @@ module pbit_array_kings (
                     .edge_prob_sw_i             (prob_sw[r][c]),
                     .edge_prob_w_i              (prob_w[r][c]),
                     .edge_prob_nw_i             (prob_nw[r][c]),
-    
-                    .spin_o                     (spin[r][c]),
-                    .busy_o                     (),
-                    .done_hold_o                ()
+
+                    .macsum_o                   (macsum_w[r][c]),
+                    .p_up_thr_i                 (p_up_thr_match_w),
+
+                    .spin_o                     (spin[r][c])
                 );
                 assign spin_flat[r*COLS+c] = spin[r][c];//ROWS-COLS
             end
         end
     endgenerate
-        // ------------------------------------------------------------
+
+    //////////////////////////////////////////////////
+    // shared tanh_lut_comb module for all p-bits
+    //////////////////////////////////////////////////
+    assign tanh_sel_w = {is_c3_q, is_c2_q, is_c1_q, is_c0_q};
+    generate
+        for(r = 0; r < TANH_ROWS; r = r + 1) begin : GEN_TANH_LUT_ROW
+            for(c = 0; c < TANH_COLS; c = c + 1) begin : GEN_TANH_LUT_COL
+                tanh_lut_comb u_tanh_lut_comb (
+                    .i0_level_i (i0_level_i),
+                    .h0_i (macsum_w[2*r][2*c]),
+                    .h1_i (macsum_w[2*r][2*c+1]),
+                    .h2_i (macsum_w[2*r+1][2*c]),
+                    .h3_i (macsum_w[2*r+1][2*c+1]),
+                    .tanh_sel_i (tanh_sel_w),
+                    .p_up_thr_o (p_up_thr_w[r][c])
+                );
+            end
+        end
+    endgenerate
+
+    // ------------------------------------------------------------
+    // shared lfsr32_rng32 module for all p-bits
+    // ------------------------------------------------------------
+    assign lfsr_en_w = is_c0_q | is_c1_q | is_c2_q | is_c3_q;
+    generate
+        for(r = 0; r < SEED_ROWS; r = r + 1) begin : GEN_LFSR32_R
+            for(c = 0; c < SEED_COLS; c = c + 1) begin : GEN_LFSR32_C
+                logic local_node_seed_we_match_w;
+                logic local_node_seed_clr_pulse_match_w;
+
+                assign local_node_seed_we_match_w =
+                    local_node_seed_we_pulse_i &&
+                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
+                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
+                
+                assign local_node_seed_clr_pulse_match_w =
+                    local_node_seed_clr_pulse_i &&
+                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
+                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
+
+                lfsr32_rng32 u_lfsr32_rng32 (
+                    .clk (clk),
+                    .rst_n (rst_n),
+                    .soft_rstn_i(glb_soft_rstn_i),
+                    .local_seed_node_we_i(local_node_seed_we_match_w),
+                    .local_seed_clr_pulse_i(local_node_seed_clr_pulse_match_w),
+                    .local_seed_clr_all_pulse_i(clr_local_all_pulse_i),
+                    .node_load_i(node_load_pulse_i),
+                    .global_node_seed_i(global_node_seed_w),
+                    .global_node_seed_vld_i(global_node_seed_vld_i),
+                    .row_node_seed_i(row_node_seed_w[r]),
+                    .row_node_seed_vld_i(row_node_seed_vld_i[r]),
+                    .local_node_seed_i(local_node_seed_w),
+                    .en_i (lfsr_en_w),
+                    .rnd32_o (lfsr_rnd_32_w[r][c])
+                );
+            end
+        end
+    endgenerate
+    // ------------------------------------------------------------
     // Horizontal edges:
     // A=(r,c), B=(r,c+1)
     // A sees B as E, B sees A as W
@@ -417,19 +501,21 @@ module pbit_array_kings (
                 logic cfg_clr_h_w;
 
                 assign cfg_we_h_w =
-                    cfg_edge_we_i &&
+                    cfg_edge_we_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_H) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 assign cfg_clr_h_w =
                     cfg_edge_clr_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_H) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 edge_reg_coupler u_edge_h (
                     .clk                  (clk),
+                    .rst_n                (rst_n),
+                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_h_w),
                     .cfg_clr_pulse_i      (cfg_clr_h_w),
@@ -467,19 +553,21 @@ module pbit_array_kings (
                 logic cfg_clr_v_w;
 
                 assign cfg_we_v_w =
-                    cfg_edge_we_i &&
+                    cfg_edge_we_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_V) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 assign cfg_clr_v_w =
                     cfg_edge_clr_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_V) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 edge_reg_coupler u_edge_v (
                     .clk                  (clk),
+                    .rst_n                (rst_n),
+                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_v_w),
                     .cfg_clr_pulse_i      (cfg_clr_v_w),
@@ -517,19 +605,21 @@ module pbit_array_kings (
                 logic cfg_clr_dse_w;
 
                 assign cfg_we_dse_w =
-                    cfg_edge_we_i &&
+                    cfg_edge_we_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_DSE) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 assign cfg_clr_dse_w =
                     cfg_edge_clr_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_DSE) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 edge_reg_coupler u_edge_dse (
                     .clk                  (clk),
+                    .rst_n                (rst_n),
+                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_dse_w),
                     .cfg_clr_pulse_i      (cfg_clr_dse_w),
@@ -567,19 +657,21 @@ module pbit_array_kings (
                 logic cfg_clr_dsw_w;
 
                 assign cfg_we_dsw_w =
-                    cfg_edge_we_i &&
+                    cfg_edge_we_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_DSW) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 assign cfg_clr_dsw_w =
                     cfg_edge_clr_pulse_i &&
                     (cfg_edge_type_i == EDGE_TYPE_EDGE_DSW) &&
-                    (cfg_edge_row_i == r[4:0]) &&
-                    (cfg_edge_col_i == c[4:0]);
+                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
+                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
 
                 edge_reg_coupler u_edge_dsw (
                     .clk                  (clk),
+                    .rst_n                (rst_n),
+                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_dsw_w),
                     .cfg_clr_pulse_i      (cfg_clr_dsw_w),
@@ -613,7 +705,7 @@ module pbit_array_kings (
             assign spin_flat_reshape[r] = spin_flat[r*SNAPSHOT_WIDTH+:SNAPSHOT_WIDTH];
         end
     endgenerate
-    assign snapshot_flat_d = spin_flat_reshape[snapshot_addr_i];
+    assign snapshot_flat_d = snapshot_addr_i < SPIN_ADDR_MAX? spin_flat_reshape[snapshot_addr_i] : {SNAPSHOT_WIDTH{1'b0}};
     assign snapshot_flat_en = snapshot_latch_pulse_i;
     assign snapshot_vld_d = snapshot_latch_pulse_i? 1'b1: snapshot_vld_q;
 
@@ -637,19 +729,35 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // Node readback
     // ------------------------------------------------------------
+    generate
+        for(r = 0; r < SEED_ROWS; r++) begin : GEN_NODE_SEED_RDATA_ROW
+            for(c = 0; c < SEED_COLS; c++) begin : GEN_NODE_SEED_RDATA_COL
+                assign local_node_rseed_w[r][c] = lfsr_rnd_32_w[r][c];
+            end
+        end
+    endgenerate
+
     always @(*) begin
-        case(cfg_node_target_mode_i)
+        case(node_target_mode_i)
             TARGET_MODE_GLOBAL: begin
                 node_rdata_cfg_d  = global_node_cfg_i;
                 node_rdata_seed_d = global_node_seed_i;
             end
             TARGET_MODE_ROW: begin
-                node_rdata_cfg_d  = row_node_cfg_i[cfg_node_row_i];
-                node_rdata_seed_d = row_node_seed_i[cfg_node_row_i];
+                if(node_row_i < ROWS)
+                    node_rdata_cfg_d  = row_node_cfg_i[node_row_i];
+                else node_rdata_cfg_d = {NODE_CFG_W{1'b0}};
+                if(node_row_i < SEED_ROWS)
+                    node_rdata_seed_d = row_node_seed_i[node_row_i];
+                else node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
             end
             TARGET_MODE_LOCAL: begin
-                node_rdata_cfg_d  = local_node_rcfg_w[cfg_node_row_i][cfg_node_col_i];
-                node_rdata_seed_d = local_node_rseed_w[cfg_node_row_i][cfg_node_col_i];
+                if(node_row_i < ROWS && node_col_i < COLS)
+                    node_rdata_cfg_d  = local_node_rcfg_w[node_row_i][node_col_i];
+                else node_rdata_cfg_d = {NODE_CFG_W{1'b0}};
+                if(node_row_i < SEED_ROWS && node_col_i < SEED_COLS)
+                    node_rdata_seed_d = local_node_rseed_w[node_row_i][node_col_i];
+                else node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
             end
             default: begin
                 node_rdata_cfg_d  = {NODE_CFG_W{1'b0}};
@@ -658,8 +766,8 @@ module pbit_array_kings (
         endcase
     end
 
-    assign node_rdata_cfg_en  = node_rdata_pulse_i;
-    assign node_rdata_seed_en = node_rdata_pulse_i;
+    assign node_rdata_cfg_en  = node_rdata_cfg_pulse_i;
+    assign node_rdata_seed_en = node_rdata_seed_pulse_i;
 
     dffe #(.WIDTH(NODE_CFG_W)
     ) node_rdata_cfg_ff (
@@ -681,23 +789,25 @@ module pbit_array_kings (
     // Edge readback
     // ------------------------------------------------------------
     always @(*) begin
-        case(cfg_edge_type_i)
-            EDGE_TYPE_EDGE_H: begin
-                edge_rdata_cfg_d = {prob_e[cfg_edge_row_i][cfg_edge_col_i], sign_e[cfg_edge_row_i][cfg_edge_col_i], valid_e[cfg_edge_row_i][cfg_edge_col_i]};
-            end
-            EDGE_TYPE_EDGE_V: begin
-                edge_rdata_cfg_d = {prob_s[cfg_edge_row_i][cfg_edge_col_i], sign_s[cfg_edge_row_i][cfg_edge_col_i], valid_s[cfg_edge_row_i][cfg_edge_col_i]};
-            end
-            EDGE_TYPE_EDGE_DSE: begin
-                edge_rdata_cfg_d = {prob_se[cfg_edge_row_i][cfg_edge_col_i], sign_se[cfg_edge_row_i][cfg_edge_col_i], valid_se[cfg_edge_row_i][cfg_edge_col_i]};
-            end
-            EDGE_TYPE_EDGE_DSW: begin
-                edge_rdata_cfg_d = {prob_sw[cfg_edge_row_i][cfg_edge_col_i], sign_sw[cfg_edge_row_i][cfg_edge_col_i], valid_sw[cfg_edge_row_i][cfg_edge_col_i]};
-            end
-            default: begin
-                edge_rdata_cfg_d = {EDGE_RDATA_PACKED_WIDTH{1'b0}};
-            end
-        endcase
+        if(cfg_edge_row_i < ROWS && cfg_edge_col_i < COLS)
+            case(cfg_edge_type_i)
+                EDGE_TYPE_EDGE_H: begin
+                    edge_rdata_cfg_d = {prob_e[cfg_edge_row_i][cfg_edge_col_i], sign_e[cfg_edge_row_i][cfg_edge_col_i], valid_e[cfg_edge_row_i][cfg_edge_col_i]};
+                end
+                EDGE_TYPE_EDGE_V: begin
+                    edge_rdata_cfg_d = {prob_s[cfg_edge_row_i][cfg_edge_col_i], sign_s[cfg_edge_row_i][cfg_edge_col_i], valid_s[cfg_edge_row_i][cfg_edge_col_i]};
+                end
+                EDGE_TYPE_EDGE_DSE: begin
+                    edge_rdata_cfg_d = {prob_se[cfg_edge_row_i][cfg_edge_col_i], sign_se[cfg_edge_row_i][cfg_edge_col_i], valid_se[cfg_edge_row_i][cfg_edge_col_i]};
+                end
+                EDGE_TYPE_EDGE_DSW: begin
+                    edge_rdata_cfg_d = {prob_sw[cfg_edge_row_i][cfg_edge_col_i], sign_sw[cfg_edge_row_i][cfg_edge_col_i], valid_sw[cfg_edge_row_i][cfg_edge_col_i]};
+                end
+                default: begin
+                    edge_rdata_cfg_d = {EDGE_RDATA_PACKED_WIDTH{1'b0}};
+                end
+            endcase
+        else edge_rdata_cfg_d = {EDGE_RDATA_PACKED_WIDTH{1'b0}};
     end
     assign edge_rdata_cfg_en = edge_rdata_pulse_i;
 
@@ -710,32 +820,48 @@ module pbit_array_kings (
     );
     // ------------------------------------------------------------
     // Done signal counter
-    // 2*num_majority+2
+    // 2*num_majority_act+2
     // ------------------------------------------------------------
-    assign cnt_max        = {num_majority_i, 1'b0} + 1;
+    assign cnt_max        = {num_majority_i, 1'b0} + 2 + 1;
+
+    assign is_c0_d        = phase_start_c0_i? 1'b1:
+                            done_c0_d? 1'b0:
+                            is_c0_q;
+
+    assign is_c1_d        = phase_start_c1_i? 1'b1:
+                            done_c1_d? 1'b0:
+                            is_c1_q;
+
+    assign is_c2_d        = phase_start_c2_i? 1'b1:
+                            done_c2_d? 1'b0:
+                            is_c2_q;
+
+    assign is_c3_d        = phase_start_c3_i? 1'b1:
+                            done_c3_d? 1'b0:
+                            is_c3_q;
 
     assign done_c0_cnt_d  = (done_c0_cnt_q == cnt_max)? 0:
                             (phase_start_c0_i || |done_c0_cnt_q)? done_c0_cnt_q + 1:
                             done_c0_cnt_q;
-    assign done_c0_cnt_en = (phase_start_c0_i || |done_c0_cnt_q || (done_c0_cnt_q == cnt_max));     
+    assign done_c0_cnt_en = (phase_start_c0_i || |done_c0_cnt_q);     
     assign done_c0_d      = done_c0_cnt_q == cnt_max; 
 
     assign done_c1_cnt_d  = (done_c1_cnt_q == cnt_max)? 0:
                             (phase_start_c1_i || |done_c1_cnt_q)? done_c1_cnt_q + 1:
                             done_c1_cnt_q;
-    assign done_c1_cnt_en = (phase_start_c1_i || |done_c1_cnt_q || (done_c1_cnt_q == cnt_max));     
+    assign done_c1_cnt_en = (phase_start_c1_i || |done_c1_cnt_q);     
     assign done_c1_d      = done_c1_cnt_q == cnt_max;  
 
     assign done_c2_cnt_d  = (done_c2_cnt_q == cnt_max)? 0:
                             (phase_start_c2_i || |done_c2_cnt_q)? done_c2_cnt_q + 1:
                             done_c2_cnt_q;
-    assign done_c2_cnt_en = (phase_start_c2_i || |done_c2_cnt_q || (done_c2_cnt_q == cnt_max));     
+    assign done_c2_cnt_en = (phase_start_c2_i || |done_c2_cnt_q);     
     assign done_c2_d      = done_c2_cnt_q == cnt_max;  
 
     assign done_c3_cnt_d  = (done_c3_cnt_q == cnt_max)? 0:
                             (phase_start_c3_i || |done_c3_cnt_q)? done_c3_cnt_q + 1:
                             done_c3_cnt_q;
-    assign done_c3_cnt_en = (phase_start_c3_i || |done_c3_cnt_q || (done_c3_cnt_q == cnt_max));     
+    assign done_c3_cnt_en = (phase_start_c3_i || |done_c3_cnt_q);     
     assign done_c3_d      = done_c3_cnt_q == cnt_max;       
 
     dffsre #(.WIDTH(NUM_MAJORITY_WIDTH+2)
@@ -812,6 +938,42 @@ module pbit_array_kings (
         .soft_rstn_i(glb_soft_rstn_i),
         .d_i(done_c3_d),
         .q_o(done_c3_q)
+    );
+
+    dffsr #(.WIDTH(1)
+    ) is_c0_ff (
+        .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
+        .d_i(is_c0_d),
+        .q_o(is_c0_q)
+    );
+
+    dffsr #(.WIDTH(1)
+    ) is_c1_ff (
+        .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
+        .d_i(is_c1_d),
+        .q_o(is_c1_q)
+    );
+
+    dffsr #(.WIDTH(1)
+    ) is_c2_ff (
+        .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
+        .d_i(is_c2_d),
+        .q_o(is_c2_q)
+    );
+
+    dffsr #(.WIDTH(1)
+    ) is_c3_ff (
+        .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
+        .d_i(is_c3_d),
+        .q_o(is_c3_q)
     );
 endmodule
 `endif

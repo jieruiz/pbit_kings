@@ -12,10 +12,10 @@ import pbit_pkg::*;
 //       GLOBAL, ROW, or LOCAL.
 //   - NODE_FIELD_WE is only the current apply write mask.
 //   - Backend *_valid bits decide whether a field participates in priority.
-//   - Priority per field: LOCAL > ROW > GLOBAL > DEFAULT.
+//   - Priority field: LOCAL > ROW > GLOBAL > DEFAULT.
 //   - Seed mode is removed. NODE_SEED is the exact seed value saved/loaded.
 // -----------------------------------------------------------------------------
-module pbit_reg_block (
+module pbit_reg_block(
     input  logic                                    clk,
     input  logic                                    rst_n,
 
@@ -57,16 +57,20 @@ module pbit_reg_block (
     output logic [NODE_CFG_W-1:0]                   global_node_cfg_o,
     output logic [NODE_SEED_WIDTH-1:0]              global_node_seed_o,
     output logic                                    global_node_cfg_vld_o,
+    output logic                                    global_node_seed_vld_o,
  
     output logic [NODE_CFG_W-1:0]                   row_node_cfg_o[ROWS],
-    output logic [NODE_SEED_WIDTH-1:0]              row_node_seed_o[ROWS],
+    output logic [NODE_SEED_WIDTH-1:0]              row_node_seed_o[SEED_ROWS],
     output logic [ROWS-1:0]                         row_node_cfg_vld_o,
+    output logic [SEED_ROWS-1:0]                    row_node_seed_vld_o,
  
-    output logic                                    local_node_we_pulse_o,
-    output logic                                    local_node_clr_pulse_o,
-    output logic [TARGET_MODE_WIDTH-1:0]            cfg_node_target_mode_o,//used in node readback
-    output logic [NODE_TARGET_ROW_WIDTH-1:0]        cfg_node_row_o,
-    output logic [NODE_TARGET_COL_WIDTH-1:0]        cfg_node_col_o,
+    output logic                                    local_node_cfg_we_pulse_o,
+    output logic                                    local_node_cfg_clr_pulse_o,
+    output logic                                    local_node_seed_we_pulse_o,
+    output logic                                    local_node_seed_clr_pulse_o,
+    output logic [TARGET_MODE_WIDTH-1:0]            node_target_mode_o,//used in node readback
+    output logic [NODE_TARGET_ROW_WIDTH-1:0]        node_row_o,
+    output logic [NODE_TARGET_COL_WIDTH-1:0]        node_col_o,
     output logic [NODE_CFG_PACKED_WIDTH-1:0]        local_node_cfg_o,
     output logic [NODE_SEED_WIDTH-1:0]              local_node_seed_o,
     output logic                                    clr_local_all_pulse_o,
@@ -86,7 +90,8 @@ module pbit_reg_block (
     //Node readback IO
     input  logic [NODE_CFG_W-1:0]                   node_rdata_cfg_i,
     input  logic [NODE_RDATA_SEED_WIDTH-1:0]        node_rdata_seed_i,
-    output logic                                    node_rdata_pulse_o,
+    output logic                                    node_rdata_cfg_pulse_o,
+    output logic                                    node_rdata_seed_pulse_o,
 
     //Edge readback IO
     input  logic [EDGE_RDATA_PACKED_WIDTH-1:0]      edge_rdata_cfg_i,
@@ -98,15 +103,15 @@ module pbit_reg_block (
     // -------------------------------------------------------------------------
     logic [NODE_TARGET_PACKED_WIDTH-1:0] node_target_q, node_target_d;// target_mode(2bit) + row(6bit) + col(6bit)
     logic                                node_target_en;
-    logic [NODE_CFG_PACKED_WIDTH-1:0]    node_cfg_q, node_cfg_d;// init_valid(1bit) + seed_valid(1bit) + clamp_valid(1bit) + bias_valid(1bit)
+    logic [NODE_CFG_PACKED_WIDTH-1:0]    node_cfg_q, node_cfg_d;// init_valid(1bit) + clamp_valid(1bit) + bias_valid(1bit)
                                                    // + init_spin(1bit) + clamp_en(1bit) + clamp_spin(1bit) + bias_sign(1bit) + bias_prob(4bit)
     logic                                node_cfg_en;
     logic [NODE_SEED_PACKED_WIDTH-1:0]   node_seed_q, node_seed_d;
     logic                                node_seed_en;
 
-    assign cfg_node_target_mode_o = node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB];
-    assign cfg_node_row_o         = node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB];
-    assign cfg_node_col_o         = node_target_q[NODE_TARGET_COL_PACKED_MSB:NODE_TARGET_COL_PACKED_LSB];
+    assign node_target_mode_o = node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB];
+    assign node_row_o         = node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB];
+    assign node_col_o         = node_target_q[NODE_TARGET_COL_PACKED_MSB:NODE_TARGET_COL_PACKED_LSB];
     assign local_node_cfg_o       = node_cfg_q;
     assign local_node_seed_o      = node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB];
 
@@ -138,26 +143,33 @@ module pbit_reg_block (
     logic [NODE_SEED_WIDTH-1:0]        global_node_seed_q, global_node_seed_d;
     logic                              global_node_seed_en;
     logic                              global_node_cfg_vld_q, global_node_cfg_vld_d;
+    logic                              global_node_seed_vld_q, global_node_seed_vld_d;
 
     logic [NODE_CFG_W-1:0]             row_node_cfg_q  [0:ROWS-1], row_node_cfg_d[0:ROWS-1];
     logic                              row_node_cfg_en [0:ROWS-1];
-    logic [NODE_SEED_WIDTH-1:0]        row_node_seed_q [0:ROWS-1], row_node_seed_d[0:ROWS-1];
-    logic                              row_node_seed_en[0:ROWS-1];
+    logic [NODE_SEED_WIDTH-1:0]        row_node_seed_q [0:SEED_ROWS-1], row_node_seed_d[0:SEED_ROWS-1];
+    logic                              row_node_seed_en[0:SEED_ROWS-1];
     logic [ROWS-1:0]                   row_node_cfg_vld_q, row_node_cfg_vld_d;
+    logic [SEED_ROWS-1:0]              row_node_seed_vld_q, row_node_seed_vld_d;
 
     assign global_node_cfg_o  = global_node_cfg_q;
     assign global_node_seed_o = global_node_seed_q;
     assign global_node_cfg_vld_o = global_node_cfg_vld_q;
+    assign global_node_seed_vld_o = global_node_seed_vld_q;
 
     genvar g;
     generate
         for (g = 0; g < ROWS; g = g + 1) begin : GEN_ROW_NODE_CFG
             assign row_node_cfg_o [g] = row_node_cfg_q[g];
+        end
+    endgenerate
+    generate
+        for (g = 0; g < SEED_ROWS; g = g + 1) begin : GEN_ROW_NODE_SEED
             assign row_node_seed_o[g] = row_node_seed_q[g];
         end
     endgenerate
     assign row_node_cfg_vld_o = row_node_cfg_vld_q;
-
+    assign row_node_seed_vld_o = row_node_seed_vld_q;
     // -------------------------------------------------------------------------
     // Global configuration registers.
     // -------------------------------------------------------------------------
@@ -216,8 +228,8 @@ module pbit_reg_block (
     logic                                  cfg_done_q, cfg_done_d;
     logic                                  run_busy_w;
     logic                                  run_done_w;//检查是否为电平信号而不是脉冲
-    logic                                  node_cfg_done_q, node_cfg_done_d;
-    logic                                  edge_cfg_done_q, edge_cfg_done_d;
+    logic                                  node_cmd_done_q, node_cmd_done_d;
+    logic                                  edge_cmd_done_q, edge_cmd_done_d;
     logic                                  snapshot_valid_w;
     logic                                  have_error_status_w;
 
@@ -229,8 +241,8 @@ module pbit_reg_block (
     assign global_status_w[CFG_DONE_PACKED_MSB:CFG_DONE_PACKED_LSB]             = cfg_done_q;
     assign global_status_w[RUN_BUSY_PACKED_MSB:RUN_BUSY_PACKED_LSB]             = run_busy_w;
     assign global_status_w[RUN_DONE_PACKED_MSB:RUN_DONE_PACKED_LSB]             = run_done_w;
-    assign global_status_w[NODE_CFG_DONE_PACKED_MSB:NODE_CFG_DONE_PACKED_LSB]   = node_cfg_done_q;
-    assign global_status_w[EDGE_CFG_DONE_PACKED_MSB:EDGE_CFG_DONE_PACKED_LSB]   = edge_cfg_done_q;
+    assign global_status_w[NODE_CMD_DONE_PACKED_MSB:NODE_CMD_DONE_PACKED_LSB]   = node_cmd_done_q;
+    assign global_status_w[EDGE_CMD_DONE_PACKED_MSB:EDGE_CMD_DONE_PACKED_LSB]   = edge_cmd_done_q;
     assign global_status_w[SNAPSHOT_VALID_PACKED_MSB:SNAPSHOT_VALID_PACKED_LSB] = snapshot_valid_w;
     assign global_status_w[ERROR_PACKED_MSB:ERROR_PACKED_LSB]                   = have_error_status_w;
 
@@ -282,17 +294,28 @@ module pbit_reg_block (
     // -------------------------------------------------------------------------
     logic node_apply_cfg_pulse_w;
     logic local_node_cfg_pulse_w;
-    logic node_load_pulse_w;
-    logic clr_scope_en_pulse_w;
-    logic local_node_clr_pulse_w;
-    logic clr_local_all_pulse_w;
-    logic node_rdata_pulse_w;
 
-    assign node_load_pulse_o      = node_load_pulse_w;
-    assign local_node_we_pulse_o  = local_node_cfg_pulse_w;
-    assign local_node_clr_pulse_o = local_node_clr_pulse_w;
-    assign clr_local_all_pulse_o  = clr_local_all_pulse_w;
-    assign node_rdata_pulse_o     = node_rdata_pulse_w;
+    //TODO
+    logic node_apply_seed_pulse_w;
+    logic local_node_seed_pulse_w;
+
+    logic node_load_pulse_w;
+    logic clr_cfg_scope_en_pulse_w;
+    logic clr_seed_scope_en_pulse_w;
+    logic local_node_cfg_clr_pulse_w;
+    logic local_node_seed_clr_pulse_w;
+    logic clr_local_all_pulse_w;
+    logic node_rdata_cfg_pulse_w;
+    logic node_rdata_seed_pulse_w;
+
+    assign node_load_pulse_o           = node_load_pulse_w;
+    assign local_node_cfg_we_pulse_o   = local_node_cfg_pulse_w;
+    assign local_node_cfg_clr_pulse_o  = local_node_cfg_clr_pulse_w;
+    assign local_node_seed_we_pulse_o  = local_node_seed_pulse_w;
+    assign local_node_seed_clr_pulse_o = local_node_seed_clr_pulse_w;
+    assign clr_local_all_pulse_o       = clr_local_all_pulse_w;
+    assign node_rdata_cfg_pulse_o      = node_rdata_cfg_pulse_w;
+    assign node_rdata_seed_pulse_o     = node_rdata_seed_pulse_w;
 
     // -------------------------------------------------------------------------
     // Edge Control registers.
@@ -318,17 +341,29 @@ module pbit_reg_block (
             default:     node_target_mode_valid = 1'b0;
         endcase
     endfunction
-
-    function automatic logic node_target_row_valid(
+    
+    function automatic logic node_cfg_target_row_valid(
         input [NODE_TARGET_ROW_WIDTH-1:0] row
     );
-        node_target_row_valid = (row < ROWS[NODE_TARGET_ROW_WIDTH-1:0]);
+        node_cfg_target_row_valid = (row < ROWS[NODE_TARGET_ROW_WIDTH-1:0]);
     endfunction
 
-    function automatic logic node_target_col_valid(
+    function automatic logic node_cfg_target_col_valid(
         input [NODE_TARGET_COL_WIDTH-1:0] col
     );
-        node_target_col_valid = (col < COLS[NODE_TARGET_COL_WIDTH-1:0]);
+        node_cfg_target_col_valid = (col < COLS[NODE_TARGET_COL_WIDTH-1:0]);
+    endfunction
+
+    function automatic logic node_seed_target_row_valid(
+        input [NODE_TARGET_ROW_WIDTH-1:0] row
+    );
+        node_seed_target_row_valid = (row < SEED_ROWS[NODE_TARGET_ROW_WIDTH-1:0]);
+    endfunction
+
+    function automatic logic node_seed_target_col_valid(
+        input [NODE_TARGET_COL_WIDTH-1:0] col
+    );
+        node_seed_target_col_valid = (col < SEED_COLS[NODE_TARGET_COL_WIDTH-1:0]);
     endfunction
 
     function automatic logic edge_target_type_valid(
@@ -628,19 +663,24 @@ module pbit_reg_block (
     assign global_node_cfg_d[NODE_CFG_BIAS_PROB_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_PROB_PACKED_LSB-NODE_CFG_VALID_W] = node_cfg_q[BIAS_VALID_PACKED_MSB:BIAS_VALID_PACKED_LSB]? 
                                                                                                                                 node_cfg_q[NODE_CFG_BIAS_PROB_PACKED_MSB:NODE_CFG_BIAS_PROB_PACKED_LSB]:
                                                                                                                                 global_node_cfg_q[NODE_CFG_BIAS_PROB_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_PROB_PACKED_LSB-NODE_CFG_VALID_W];
-    assign global_node_cfg_en = node_apply_cfg_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_GLOBAL);
-    assign global_node_seed_d = node_cfg_q[SEED_VALID_PACKED_MSB:SEED_VALID_PACKED_LSB]? 
-                                node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB]:
-                                global_node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB];
-    assign global_node_seed_en = node_apply_cfg_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_GLOBAL);
+    assign global_node_cfg_en    = node_apply_cfg_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_GLOBAL);
+    assign global_node_seed_d    = node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB];
+    assign global_node_seed_en   = node_apply_seed_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_GLOBAL);
     assign global_node_cfg_vld_d = node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_GLOBAL?
                                    node_apply_cfg_pulse_w? 1'b1:
-                                   clr_scope_en_pulse_w? 1'b0:
+                                   clr_cfg_scope_en_pulse_w? 1'b0:
                                    global_node_cfg_vld_q:
                                    global_node_cfg_vld_q;
+    assign global_node_seed_vld_d = node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_GLOBAL?
+                                   node_apply_seed_pulse_w? 1'b1:
+                                   clr_seed_scope_en_pulse_w? 1'b0:
+                                   global_node_seed_vld_q:
+                                   global_node_seed_vld_q;
 
     generate
         for (g = 0; g < ROWS; g = g + 1) begin : ROW_NODE_CFG
+            logic row_node_cfg_match_w;
+            assign row_node_cfg_match_w = (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_ROW) && (node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB] == g);
             assign row_node_cfg_d[g][NODE_CFG_INIT_SPIN_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_INIT_SPIN_PACKED_LSB-NODE_CFG_VALID_W] = node_cfg_q[INIT_VALID_PACKED_MSB:INIT_VALID_PACKED_LSB]? 
                                                                                                                                       node_cfg_q[NODE_CFG_INIT_SPIN_PACKED_MSB:NODE_CFG_INIT_SPIN_PACKED_LSB]:
                                                                                                                                       row_node_cfg_q[g][NODE_CFG_INIT_SPIN_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_INIT_SPIN_PACKED_LSB-NODE_CFG_VALID_W];
@@ -656,24 +696,33 @@ module pbit_reg_block (
             assign row_node_cfg_d[g][NODE_CFG_BIAS_PROB_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_PROB_PACKED_LSB-NODE_CFG_VALID_W] = node_cfg_q[BIAS_VALID_PACKED_MSB:BIAS_VALID_PACKED_LSB]? 
                                                                                                                                         node_cfg_q[NODE_CFG_BIAS_PROB_PACKED_MSB:NODE_CFG_BIAS_PROB_PACKED_LSB]:
                                                                                                                                         row_node_cfg_q[g][NODE_CFG_BIAS_PROB_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_PROB_PACKED_LSB-NODE_CFG_VALID_W];
-            assign row_node_cfg_en[g] = node_apply_cfg_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_ROW) && (node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB] == g);
-            assign row_node_seed_d[g] = node_cfg_q[SEED_VALID_PACKED_MSB:SEED_VALID_PACKED_LSB]? 
-                                         node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB]:
-                                         row_node_seed_q[g][NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB];
-            assign row_node_seed_en[g] = node_apply_cfg_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_ROW) && (node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB] == g);
-            assign row_node_cfg_vld_d[g] = node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_ROW?
+            assign row_node_cfg_en[g] = node_apply_cfg_pulse_w && row_node_cfg_match_w;
+            assign row_node_cfg_vld_d[g] = row_node_cfg_match_w?
                                            node_apply_cfg_pulse_w? 1'b1:
-                                           clr_scope_en_pulse_w? 1'b0:
+                                           clr_cfg_scope_en_pulse_w? 1'b0:
                                            row_node_cfg_vld_q[g]:
                                            row_node_cfg_vld_q[g];  
         end
     endgenerate
 
+    generate
+        for (g = 0; g < SEED_ROWS; g = g + 1)begin : ROW_NODE_SEED
+            logic row_node_seed_match_w;
+            assign row_node_seed_match_w  = (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_ROW) && (node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB] == g);
+            assign row_node_seed_d[g]     = node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB];
+            assign row_node_seed_en[g]    = node_apply_seed_pulse_w && row_node_seed_match_w;
+            assign row_node_seed_vld_d[g] = row_node_seed_match_w?
+                                             node_apply_seed_pulse_w? 1'b1:
+                                             clr_seed_scope_en_pulse_w? 1'b0:
+                                             row_node_seed_vld_q[g]:
+                                             row_node_seed_vld_q[g];
+        end
+    endgenerate
     // -------------------------------------------------------------------------
     // Global configuration registers's d port assignment.
     // -------------------------------------------------------------------------
     assign global_cfg_d  =  {reg_wdata_i[NUM_MAJORITY_MSB:NUM_MAJORITY_LSB], reg_wdata_i[NUM_SWEEP_MSB:NUM_SWEEP_LSB]};
-    assign global_cfg_en = (reg_addr_i == A_GLOBAL_CFG) && reg_wr_en_i;
+    assign global_cfg_en = (reg_addr_i == A_GLOBAL_CFG) && reg_wr_en_i && !run_busy_w;
 
     // -------------------------------------------------------------------------
     // SNAPSHOT addr registers's d port assignment.
@@ -684,59 +733,59 @@ module pbit_reg_block (
     // i0 level registers's d port assignment.
     // -------------------------------------------------------------------------
     assign i0_level_d = {reg_wdata_i[I0_LEVEL3_MSB:I0_LEVEL3_LSB], reg_wdata_i[I0_LEVEL2_MSB:I0_LEVEL2_LSB], reg_wdata_i[I0_LEVEL1_MSB:I0_LEVEL1_LSB], reg_wdata_i[I0_LEVEL0_MSB:I0_LEVEL0_LSB]};
-    assign i0_level_en[0] = (reg_addr_i == A_I0_LEVEL0) && reg_wr_en_i;
-    assign i0_level_en[1] = (reg_addr_i == A_I0_LEVEL1) && reg_wr_en_i;
-    assign i0_level_en[2] = (reg_addr_i == A_I0_LEVEL2) && reg_wr_en_i;
-    assign i0_level_en[3] = (reg_addr_i == A_I0_LEVEL3) && reg_wr_en_i;
-    assign i0_level_en[4] = (reg_addr_i == A_I0_LEVEL4) && reg_wr_en_i;
-    assign i0_level_en[5] = (reg_addr_i == A_I0_LEVEL5) && reg_wr_en_i;
-    assign i0_level_en[6] = (reg_addr_i == A_I0_LEVEL6) && reg_wr_en_i;
-    assign i0_level_en[7] = (reg_addr_i == A_I0_LEVEL7) && reg_wr_en_i;
-    assign i0_level_en[8] = (reg_addr_i == A_I0_LEVEL8) && reg_wr_en_i;
-    assign i0_level_en[9] = (reg_addr_i == A_I0_LEVEL9) && reg_wr_en_i;
-    assign i0_level_en[10] = (reg_addr_i == A_I0_LEVEL10) && reg_wr_en_i;
-    assign i0_level_en[11] = (reg_addr_i == A_I0_LEVEL11) && reg_wr_en_i;
-    assign i0_level_en[12] = (reg_addr_i == A_I0_LEVEL12) && reg_wr_en_i;
-    assign i0_level_en[13] = (reg_addr_i == A_I0_LEVEL13) && reg_wr_en_i;
-    assign i0_level_en[14] = (reg_addr_i == A_I0_LEVEL14) && reg_wr_en_i;
-    assign i0_level_en[15] = (reg_addr_i == A_I0_LEVEL15) && reg_wr_en_i;
+    assign i0_level_en[0] = (reg_addr_i == A_I0_LEVEL0) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[1] = (reg_addr_i == A_I0_LEVEL1) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[2] = (reg_addr_i == A_I0_LEVEL2) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[3] = (reg_addr_i == A_I0_LEVEL3) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[4] = (reg_addr_i == A_I0_LEVEL4) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[5] = (reg_addr_i == A_I0_LEVEL5) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[6] = (reg_addr_i == A_I0_LEVEL6) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[7] = (reg_addr_i == A_I0_LEVEL7) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[8] = (reg_addr_i == A_I0_LEVEL8) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[9] = (reg_addr_i == A_I0_LEVEL9) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[10] = (reg_addr_i == A_I0_LEVEL10) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[11] = (reg_addr_i == A_I0_LEVEL11) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[12] = (reg_addr_i == A_I0_LEVEL12) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[13] = (reg_addr_i == A_I0_LEVEL13) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[14] = (reg_addr_i == A_I0_LEVEL14) && reg_wr_en_i && ~run_busy_w;
+    assign i0_level_en[15] = (reg_addr_i == A_I0_LEVEL15) && reg_wr_en_i && ~run_busy_w;
 
     // -------------------------------------------------------------------------
     // sweep interval registers's d port assignment.
     // -------------------------------------------------------------------------
     assign sweep_interval_d = {reg_wdata_i[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB], reg_wdata_i[SWEEP_INTERVAL0_MSB:SWEEP_INTERVAL0_LSB]};
-    assign sweep_interval_en[0] = (reg_addr_i == A_SWEEP_INTERVAL0) && reg_wr_en_i;
-    assign sweep_interval_en[1] = (reg_addr_i == A_SWEEP_INTERVAL1) && reg_wr_en_i;
-    assign sweep_interval_en[2] = (reg_addr_i == A_SWEEP_INTERVAL2) && reg_wr_en_i;
-    assign sweep_interval_en[3] = (reg_addr_i == A_SWEEP_INTERVAL3) && reg_wr_en_i;
-    assign sweep_interval_en[4] = (reg_addr_i == A_SWEEP_INTERVAL4) && reg_wr_en_i;
-    assign sweep_interval_en[5] = (reg_addr_i == A_SWEEP_INTERVAL5) && reg_wr_en_i;
-    assign sweep_interval_en[6] = (reg_addr_i == A_SWEEP_INTERVAL6) && reg_wr_en_i;
-    assign sweep_interval_en[7] = (reg_addr_i == A_SWEEP_INTERVAL7) && reg_wr_en_i;
-    assign sweep_interval_en[8] = (reg_addr_i == A_SWEEP_INTERVAL8) && reg_wr_en_i;
-    assign sweep_interval_en[9] = (reg_addr_i == A_SWEEP_INTERVAL9) && reg_wr_en_i;
-    assign sweep_interval_en[10] = (reg_addr_i == A_SWEEP_INTERVAL10) && reg_wr_en_i;
-    assign sweep_interval_en[11] = (reg_addr_i == A_SWEEP_INTERVAL11) && reg_wr_en_i;
-    assign sweep_interval_en[12] = (reg_addr_i == A_SWEEP_INTERVAL12) && reg_wr_en_i;
-    assign sweep_interval_en[13] = (reg_addr_i == A_SWEEP_INTERVAL13) && reg_wr_en_i;
-    assign sweep_interval_en[14] = (reg_addr_i == A_SWEEP_INTERVAL14) && reg_wr_en_i;
-    assign sweep_interval_en[15] = (reg_addr_i == A_SWEEP_INTERVAL15) && reg_wr_en_i;
-    assign sweep_interval_en[16] = (reg_addr_i == A_SWEEP_INTERVAL16) && reg_wr_en_i;
-    assign sweep_interval_en[17] = (reg_addr_i == A_SWEEP_INTERVAL17) && reg_wr_en_i;
-    assign sweep_interval_en[18] = (reg_addr_i == A_SWEEP_INTERVAL18) && reg_wr_en_i;
-    assign sweep_interval_en[19] = (reg_addr_i == A_SWEEP_INTERVAL19) && reg_wr_en_i;
-    assign sweep_interval_en[20] = (reg_addr_i == A_SWEEP_INTERVAL20) && reg_wr_en_i;
-    assign sweep_interval_en[21] = (reg_addr_i == A_SWEEP_INTERVAL21) && reg_wr_en_i;
-    assign sweep_interval_en[22] = (reg_addr_i == A_SWEEP_INTERVAL22) && reg_wr_en_i;
-    assign sweep_interval_en[23] = (reg_addr_i == A_SWEEP_INTERVAL23) && reg_wr_en_i;
-    assign sweep_interval_en[24] = (reg_addr_i == A_SWEEP_INTERVAL24) && reg_wr_en_i;
-    assign sweep_interval_en[25] = (reg_addr_i == A_SWEEP_INTERVAL25) && reg_wr_en_i;
-    assign sweep_interval_en[26] = (reg_addr_i == A_SWEEP_INTERVAL26) && reg_wr_en_i;
-    assign sweep_interval_en[27] = (reg_addr_i == A_SWEEP_INTERVAL27) && reg_wr_en_i;
-    assign sweep_interval_en[28] = (reg_addr_i == A_SWEEP_INTERVAL28) && reg_wr_en_i;
-    assign sweep_interval_en[29] = (reg_addr_i == A_SWEEP_INTERVAL29) && reg_wr_en_i;
-    assign sweep_interval_en[30] = (reg_addr_i == A_SWEEP_INTERVAL30) && reg_wr_en_i;
-    assign sweep_interval_en[31] = (reg_addr_i == A_SWEEP_INTERVAL31) && reg_wr_en_i;
+    assign sweep_interval_en[0] = (reg_addr_i == A_SWEEP_INTERVAL0) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[1] = (reg_addr_i == A_SWEEP_INTERVAL1) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[2] = (reg_addr_i == A_SWEEP_INTERVAL2) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[3] = (reg_addr_i == A_SWEEP_INTERVAL3) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[4] = (reg_addr_i == A_SWEEP_INTERVAL4) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[5] = (reg_addr_i == A_SWEEP_INTERVAL5) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[6] = (reg_addr_i == A_SWEEP_INTERVAL6) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[7] = (reg_addr_i == A_SWEEP_INTERVAL7) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[8] = (reg_addr_i == A_SWEEP_INTERVAL8) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[9] = (reg_addr_i == A_SWEEP_INTERVAL9) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[10] = (reg_addr_i == A_SWEEP_INTERVAL10) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[11] = (reg_addr_i == A_SWEEP_INTERVAL11) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[12] = (reg_addr_i == A_SWEEP_INTERVAL12) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[13] = (reg_addr_i == A_SWEEP_INTERVAL13) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[14] = (reg_addr_i == A_SWEEP_INTERVAL14) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[15] = (reg_addr_i == A_SWEEP_INTERVAL15) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[16] = (reg_addr_i == A_SWEEP_INTERVAL16) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[17] = (reg_addr_i == A_SWEEP_INTERVAL17) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[18] = (reg_addr_i == A_SWEEP_INTERVAL18) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[19] = (reg_addr_i == A_SWEEP_INTERVAL19) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[20] = (reg_addr_i == A_SWEEP_INTERVAL20) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[21] = (reg_addr_i == A_SWEEP_INTERVAL21) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[22] = (reg_addr_i == A_SWEEP_INTERVAL22) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[23] = (reg_addr_i == A_SWEEP_INTERVAL23) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[24] = (reg_addr_i == A_SWEEP_INTERVAL24) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[25] = (reg_addr_i == A_SWEEP_INTERVAL25) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[26] = (reg_addr_i == A_SWEEP_INTERVAL26) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[27] = (reg_addr_i == A_SWEEP_INTERVAL27) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[28] = (reg_addr_i == A_SWEEP_INTERVAL28) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[29] = (reg_addr_i == A_SWEEP_INTERVAL29) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[30] = (reg_addr_i == A_SWEEP_INTERVAL30) && reg_wr_en_i && ~run_busy_w;
+    assign sweep_interval_en[31] = (reg_addr_i == A_SWEEP_INTERVAL31) && reg_wr_en_i && ~run_busy_w;
 
     // -------------------------------------------------------------------------
     // ERROR_STATUS registers's d port assignment.
@@ -746,12 +795,14 @@ module pbit_reg_block (
     logic addr_readable_w;
     logic reg_access_error_w;
     logic node_target_mode_valid_w;
-    logic node_target_row_valid_w;
-    logic node_target_col_valid_w;
+    logic node_cfg_target_row_valid_w;
+    logic node_cfg_target_col_valid_w;
+    logic node_seed_target_row_valid_w;
+    logic node_seed_target_col_valid_w;
     logic edge_target_type_valid_w;
     logic edge_target_row_valid_w;
     logic edge_target_col_valid_w;
-    assign addr_valid_w = addr_valid(reg_addr_i);
+    assign addr_valid_w    = addr_valid(reg_addr_i);
     assign addr_writable_w = addr_writable(reg_addr_i);
     assign addr_readable_w = addr_readable(reg_addr_i);
     // UART samples ST_REG_ERR in BUS_CAPTURE, one cycle after the access pulse.
@@ -759,22 +810,24 @@ module pbit_reg_block (
                                 (reg_wr_en_i && addr_valid_w && !addr_writable_w) ||
                                 (reg_rd_en_i && addr_valid_w && !addr_readable_w);
     assign node_target_mode_valid_w = node_target_mode_valid(node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB]);
-    assign node_target_row_valid_w = node_target_row_valid(node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB]);
-    assign node_target_col_valid_w = node_target_col_valid(node_target_q[NODE_TARGET_COL_PACKED_MSB:NODE_TARGET_COL_PACKED_LSB]);
+    assign node_cfg_target_row_valid_w  = node_cfg_target_row_valid(node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB]);
+    assign node_cfg_target_col_valid_w  = node_cfg_target_col_valid(node_target_q[NODE_TARGET_COL_PACKED_MSB:NODE_TARGET_COL_PACKED_LSB]);
+    assign node_seed_target_row_valid_w = node_seed_target_row_valid(node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB]);
+    assign node_seed_target_col_valid_w = node_seed_target_col_valid(node_target_q[NODE_TARGET_COL_PACKED_MSB:NODE_TARGET_COL_PACKED_LSB]);
     assign edge_target_type_valid_w = edge_target_type_valid(cfg_edge_type_q[EDGE_TYPE_PACKED_MSB:EDGE_TYPE_PACKED_LSB]);
-    assign edge_target_row_valid_w = edge_target_row_valid(cfg_edge_type_q, cfg_edge_row_q);
-    assign edge_target_col_valid_w = edge_target_col_valid(cfg_edge_type_q, cfg_edge_col_q);
+    assign edge_target_row_valid_w  = edge_target_row_valid(cfg_edge_type_q, cfg_edge_row_q);
+    assign edge_target_col_valid_w  = edge_target_col_valid(cfg_edge_type_q, cfg_edge_col_q);
     assign error_status_d[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[ADDR_ERR_MSB:ADDR_ERR_LSB] && reg_wr_en_i)? 1'b0:
-                                                                     (reg_wr_en_i || reg_rd_en_i)? !addr_valid_w: 
+                                                                     (reg_wr_en_i || reg_rd_en_i) && !addr_valid_w? 1'b1: 
                                                                      error_status_q[ADDR_ERR_PACKED_MSB:ADDR_ERR_PACKED_LSB];//addr_valid_w-!addr_valid_w
     assign error_status_d[WR_TO_RO_PACKED_MSB:WR_TO_RO_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[WR_TO_RO_MSB:WR_TO_RO_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                     (reg_wr_en_i)? addr_valid_w && (!addr_writable_w):
+                                                                     (reg_wr_en_i && addr_valid_w && !addr_writable_w)? 1'b1:
                                                                      error_status_q[WR_TO_RO_PACKED_MSB:WR_TO_RO_PACKED_LSB];
     assign error_status_d[RD_TO_WO_PACKED_MSB:RD_TO_WO_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                      ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[RD_TO_WO_MSB:RD_TO_WO_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                     (reg_rd_en_i)? addr_valid_w && (!addr_readable_w):
+                                                                     (reg_rd_en_i && addr_valid_w && !addr_readable_w)? 1'b1:
                                                                      error_status_q[RD_TO_WO_PACKED_MSB:RD_TO_WO_PACKED_LSB];
     assign error_status_d[NODE_CFG_WHILE_RUN_PACKED_MSB:NODE_CFG_WHILE_RUN_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                                          ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[NODE_CFG_WHILE_RUN_MSB:NODE_CFG_WHILE_RUN_LSB] && reg_wr_en_i)? 1'b0: 
@@ -794,16 +847,29 @@ module pbit_reg_block (
                                                                                error_status_q[RUN_WHEN_BUSY_PACKED_MSB:RUN_WHEN_BUSY_PACKED_LSB];      
     assign error_status_d[NODE_TARGET_MODE_ERR_PACKED_MSB:NODE_TARGET_MODE_ERR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[NODE_TARGET_MODE_ERR_MSB:NODE_TARGET_MODE_ERR_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                                             ((node_apply_cfg_pulse_w || local_node_cfg_pulse_w || clr_scope_en_pulse_w || local_node_clr_pulse_w || node_rdata_pulse_w) && !node_target_mode_valid_w)? 1'b1:
+                                                                                             ((node_apply_cfg_pulse_w || node_apply_seed_pulse_w || local_node_cfg_pulse_w || local_node_seed_pulse_w || clr_cfg_scope_en_pulse_w ||
+                                                                                               clr_seed_scope_en_pulse_w || local_node_cfg_clr_pulse_w || local_node_seed_clr_pulse_w || node_rdata_cfg_pulse_w || node_rdata_seed_pulse_w) && !node_target_mode_valid_w)? 1'b1:
                                                                                              error_status_q[NODE_TARGET_MODE_ERR_PACKED_MSB:NODE_TARGET_MODE_ERR_PACKED_LSB];   
     assign error_status_d[NODE_ROW_OOR_PACKED_MSB:NODE_ROW_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[NODE_ROW_OOR_MSB:NODE_ROW_OOR_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                             ((node_apply_cfg_pulse_w || local_node_cfg_pulse_w || clr_scope_en_pulse_w || local_node_clr_pulse_w || node_rdata_pulse_w) && !node_target_row_valid_w)? 1'b1:
+                                                                             ((node_apply_cfg_pulse_w || local_node_cfg_pulse_w || clr_cfg_scope_en_pulse_w || 
+                                                                               local_node_cfg_clr_pulse_w || node_rdata_cfg_pulse_w) && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] != TARGET_MODE_GLOBAL) && !node_cfg_target_row_valid_w)? 1'b1:
                                                                              error_status_q[NODE_ROW_OOR_PACKED_MSB:NODE_ROW_OOR_PACKED_LSB]; 
     assign error_status_d[NODE_COL_OOR_PACKED_MSB:NODE_COL_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[NODE_COL_OOR_MSB:NODE_COL_OOR_LSB] && reg_wr_en_i)? 1'b0: 
-                                                                             ((node_apply_cfg_pulse_w || local_node_cfg_pulse_w || clr_scope_en_pulse_w || local_node_clr_pulse_w || node_rdata_pulse_w) && !node_target_col_valid_w)? 1'b1:
+                                                                             ((node_apply_cfg_pulse_w || local_node_cfg_pulse_w || clr_cfg_scope_en_pulse_w || 
+                                                                               local_node_cfg_clr_pulse_w || node_rdata_cfg_pulse_w) && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] != TARGET_MODE_GLOBAL) && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] != TARGET_MODE_ROW) && !node_cfg_target_col_valid_w)? 1'b1:
                                                                              error_status_q[NODE_COL_OOR_PACKED_MSB:NODE_COL_OOR_PACKED_LSB];//hold node column OOR status, not row status
+    assign error_status_d[SEED_ROW_OOR_PACKED_MSB:SEED_ROW_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
+                                                                             ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[SEED_ROW_OOR_MSB:SEED_ROW_OOR_LSB] && reg_wr_en_i)? 1'b0: 
+                                                                             ((node_apply_seed_pulse_w || local_node_seed_pulse_w || clr_seed_scope_en_pulse_w || 
+                                                                               local_node_seed_clr_pulse_w || node_rdata_seed_pulse_w) && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] != TARGET_MODE_GLOBAL) && !node_seed_target_row_valid_w)? 1'b1:
+                                                                             error_status_q[SEED_ROW_OOR_PACKED_MSB:SEED_ROW_OOR_PACKED_LSB]; 
+    assign error_status_d[SEED_COL_OOR_PACKED_MSB:SEED_COL_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
+                                                                             ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[SEED_COL_OOR_MSB:SEED_COL_OOR_LSB] && reg_wr_en_i)? 1'b0: 
+                                                                             ((node_apply_seed_pulse_w || local_node_seed_pulse_w || clr_seed_scope_en_pulse_w || 
+                                                                               local_node_seed_clr_pulse_w || node_rdata_seed_pulse_w) && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] != TARGET_MODE_GLOBAL) && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] != TARGET_MODE_ROW) && !node_seed_target_col_valid_w)? 1'b1:
+                                                                             error_status_q[SEED_COL_OOR_PACKED_MSB:SEED_COL_OOR_PACKED_LSB];//hold seed column OOR status, not row status                                                                             
     assign error_status_d[EDGE_ROW_OOR_PACKED_MSB:EDGE_ROW_OOR_PACKED_LSB] = error_clear_pulse_w ? 1'b0 :
                                                                              ((reg_addr_i == A_ERROR_STATUS) && reg_wdata_i[EDGE_ROW_OOR_MSB:EDGE_ROW_OOR_LSB] && reg_wr_en_i)? 1'b0: 
                                                                              ((edge_apply_cfg_pulse_w || cfg_edge_clr_pulse_w || edge_rdata_pulse_w) && !edge_target_row_valid_w)? 1'b1:
@@ -833,13 +899,13 @@ module pbit_reg_block (
     // Global status registers
     // -------------------------------------------------------------------------
     assign cfg_done_d = cfg_done_set_pulse_w ? 1'b1 : cfg_done_clr_pulse_w ? 1'b0: cfg_done_q;
-    assign node_cfg_done_d = ((reg_addr_i == A_GLOBAL_STATUS) && reg_rd_en_i)? 1'b0:
-                             (node_apply_cfg_pulse_w || local_node_cfg_pulse_w || node_load_pulse_w || clr_scope_en_pulse_w ||
-                              local_node_clr_pulse_w || clr_local_all_pulse_w || node_rdata_pulse_w)? 1'b1:
-                              node_cfg_done_q;
-    assign edge_cfg_done_d = ((reg_addr_i == A_GLOBAL_STATUS) && reg_rd_en_i)? 1'b0:
+    assign node_cmd_done_d = ((reg_addr_i == A_GLOBAL_STATUS) && reg_rd_en_i)? 1'b0:
+                             (node_apply_cfg_pulse_w || node_apply_seed_pulse_w || local_node_cfg_pulse_w || local_node_seed_pulse_w || node_load_pulse_w || clr_cfg_scope_en_pulse_w || clr_seed_scope_en_pulse_w || 
+                              local_node_cfg_clr_pulse_w || local_node_seed_clr_pulse_w || clr_local_all_pulse_w || node_rdata_cfg_pulse_w || node_rdata_seed_pulse_w)? 1'b1:
+                              node_cmd_done_q;
+    assign edge_cmd_done_d = ((reg_addr_i == A_GLOBAL_STATUS) && reg_rd_en_i)? 1'b0:
                              (edge_apply_cfg_pulse_w || cfg_edge_clr_pulse_w || edge_rdata_pulse_w)? 1'b1:
-                              edge_cfg_done_q; 
+                              edge_cmd_done_q; 
     // ----------------------------------------------------------
     // Glboal Control registers's assignment.
     // -------------------------------------------------------------------------
@@ -858,12 +924,17 @@ module pbit_reg_block (
     // Node Control registers's assignment.
     // -------------------------------------------------------------------------
     assign node_apply_cfg_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[APPLY_CFG_MSB:APPLY_CFG_LSB]) && !run_busy_w;
+    assign node_apply_seed_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[APPLY_SEED_MSB:APPLY_SEED_LSB]) && !run_busy_w;
     assign local_node_cfg_pulse_w = node_apply_cfg_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_LOCAL) && !run_busy_w;
-    assign node_load_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[LOAD_CFG_MSB:LOAD_CFG_LSB]) && !run_busy_w;
-    assign clr_scope_en_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[CLEAR_SCOPE_EN_MSB:CLEAR_SCOPE_EN_LSB]) && !run_busy_w;
-    assign local_node_clr_pulse_w = clr_scope_en_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_LOCAL);
+    assign local_node_seed_pulse_w = node_apply_seed_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_LOCAL) && !run_busy_w;
+    assign node_load_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[LOAD_NODE_MSB:LOAD_NODE_LSB]) && !run_busy_w;
+    assign clr_cfg_scope_en_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB]) && !run_busy_w;
+    assign clr_seed_scope_en_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB]) && !run_busy_w;
+    assign local_node_cfg_clr_pulse_w = clr_cfg_scope_en_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_LOCAL);
+    assign local_node_seed_clr_pulse_w = clr_seed_scope_en_pulse_w && (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_LOCAL);
     assign clr_local_all_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB]) && !run_busy_w;
-    assign node_rdata_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[READBACK_NODE_MSB:READBACK_NODE_LSB]) && !run_busy_w;
+    assign node_rdata_cfg_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[READBACK_CFG_MSB:READBACK_CFG_LSB]) && !run_busy_w;
+    assign node_rdata_seed_pulse_w = (reg_addr_i == A_NODE_CMD) && reg_wr_en_i && (reg_wdata_i[READBACK_SEED_MSB:READBACK_SEED_LSB]) && !run_busy_w;
 
     // -------------------------------------------------------------------------
     // Edge Control registers's assignment.
@@ -951,11 +1022,12 @@ module pbit_reg_block (
         .q_o (cfg_edge_sign_q)
     );
 
-    dff #(.WIDTH(EDGE_CFG_EDGE_VALID_WIDTH)
+    dffr #(.WIDTH(EDGE_CFG_EDGE_VALID_WIDTH)
     ) cfg_edge_valid_ff(
-        .clk (clk),
-        .d_i (cfg_edge_valid_d),
-        .q_o (cfg_edge_valid_q)
+        .clk   (clk),
+        .rst_n (rst_n),
+        .d_i   (cfg_edge_valid_d),
+        .q_o   (cfg_edge_valid_q)
     );
 
     // -------------------------------------------------------------------------
@@ -985,6 +1057,14 @@ module pbit_reg_block (
         .q_o (global_node_cfg_vld_q)
     );
 
+    dffr #(.WIDTH(1)
+    ) global_node_seed_vld_ff(
+        .clk (clk),
+        .rst_n (rst_n),
+        .d_i (global_node_seed_vld_d),
+        .q_o (global_node_seed_vld_q)
+    );
+
     generate
         for(g = 0; g < ROWS; g = g + 1) begin : ROW_NODE_CFG_FF
             dffe #(.WIDTH(NODE_CFG_W)
@@ -993,14 +1073,6 @@ module pbit_reg_block (
                 .en_i(row_node_cfg_en[g]),
                 .d_i (row_node_cfg_d[g]),
                 .q_o (row_node_cfg_q[g])
-            );
-
-            dffe #(.WIDTH(NODE_SEED_WIDTH)
-            ) row_node_seed_ff(
-                .clk (clk),
-                .en_i(row_node_seed_en[g]),
-                .d_i (row_node_seed_d[g]),
-                .q_o (row_node_seed_q[g])
             );
 
             dffr #(.WIDTH(1)
@@ -1013,12 +1085,32 @@ module pbit_reg_block (
         end
     endgenerate
 
+    generate
+        for(g = 0; g < SEED_ROWS; g = g + 1) begin : ROW_NODE_SEED_FF
+            dffe #(.WIDTH(NODE_SEED_WIDTH)
+            ) row_node_seed_ff(
+                .clk (clk),
+                .en_i(row_node_seed_en[g]),
+                .d_i (row_node_seed_d[g]),
+                .q_o (row_node_seed_q[g])
+            );
+
+            dffr #(.WIDTH(1)
+            ) row_node_seed_vld_ff(
+                .clk (clk),
+                .rst_n (rst_n),
+                .d_i (row_node_seed_vld_d[g]),
+                .q_o (row_node_seed_vld_q[g])
+            );
+        end
+    endgenerate
     // -------------------------------------------------------------------------
     // Global configuration registers instantiation.
     // -------------------------------------------------------------------------
-    dffe #(.WIDTH(GLOBAL_CFG_PACKED_WIDTH)
+    dffre #(.WIDTH(GLOBAL_CFG_PACKED_WIDTH)
     ) global_cfg_ff(
         .clk (clk),
+        .rst_n (rst_n),
         .en_i(global_cfg_en),
         .d_i (global_cfg_d),
         .q_o (global_cfg_q)
@@ -1039,9 +1131,10 @@ module pbit_reg_block (
     // -------------------------------------------------------------------------
     generate
         for(g = 0; g < I0_LEVEL_REG_NUM; g = g + 1) begin :I0_LEVEL_REG_INST 
-            dffe #(.WIDTH(I0_LEVEL_PACKED_WIDTH)
+            dffre #(.WIDTH(I0_LEVEL_PACKED_WIDTH)
             ) i0_level_ff(
                 .clk(clk),
+                .rst_n (rst_n),
                 .en_i(i0_level_en[g]),
                 .d_i(i0_level_d),
                 .q_o(i0_level_q[g])
@@ -1054,9 +1147,10 @@ module pbit_reg_block (
     // -------------------------------------------------------------------------
     generate
         for(g = 0; g < SWEEP_INTERVAL_REG_NUM; g = g + 1) begin :SWEEP_INTERVAL_REG_INST 
-            dffe #(.WIDTH(SWEEP_INTERVAL_PACKED_WIDTH)
+            dffre #(.WIDTH(SWEEP_INTERVAL_PACKED_WIDTH)
             ) sweep_interval_ff(
                 .clk(clk),
+                .rst_n (rst_n),
                 .en_i(sweep_interval_en[g]),
                 .d_i(sweep_interval_d),
                 .q_o(sweep_interval_q[g])
@@ -1094,19 +1188,19 @@ module pbit_reg_block (
     );
     
     dffr #(.WIDTH(1)
-    ) node_cfg_done_ff(
+    ) node_cmd_done_ff(
         .clk (clk),
         .rst_n (rst_n),
-        .d_i (node_cfg_done_d),
-        .q_o (node_cfg_done_q)
+        .d_i (node_cmd_done_d),
+        .q_o (node_cmd_done_q)
     );
 
     dffr #(.WIDTH(1)
     ) edge_cfg_done_ff(
         .clk (clk),
         .rst_n (rst_n),
-        .d_i (edge_cfg_done_d),
-        .q_o (edge_cfg_done_q)
+        .d_i (edge_cmd_done_d),
+        .q_o (edge_cmd_done_q)
     );
 endmodule
 `endif

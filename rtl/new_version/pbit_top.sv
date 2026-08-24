@@ -37,20 +37,27 @@ module pbit_top (
     logic [NODE_CFG_W-1:0]                  global_node_cfg_w;
     logic [NODE_SEED_WIDTH-1:0]             global_node_seed_w;
     logic                                   global_node_cfg_vld_w;
+    logic                                   global_node_seed_vld_w;
+
     logic [NODE_CFG_W-1:0]                  row_node_cfg_w[ROWS];
-    logic [NODE_SEED_WIDTH-1:0]             row_node_seed_w[ROWS];
+    logic [NODE_SEED_WIDTH-1:0]             row_node_seed_w[SEED_ROWS];
     logic [ROWS-1:0]                        row_node_cfg_vld_w;
-    logic                                   local_node_we_pulse_w;
-    logic                                   local_node_clr_pulse_w;
-    logic [TARGET_MODE_WIDTH-1:0]           cfg_node_target_mode_w;
-    logic [NODE_TARGET_ROW_WIDTH-1:0]       cfg_node_row_w;
-    logic [NODE_TARGET_COL_WIDTH-1:0]       cfg_node_col_w;
+    logic [SEED_ROWS-1:0]                   row_node_seed_vld_w;
+
+    logic                                   local_node_cfg_we_pulse_w;
+    logic                                   local_node_cfg_clr_pulse_w;
+    logic                                   local_node_seed_we_pulse_w;
+    logic                                   local_node_seed_clr_pulse_w;
+    logic [TARGET_MODE_WIDTH-1:0]           node_target_mode_w;
+    logic [NODE_TARGET_ROW_WIDTH-1:0]       node_row_w;
+    logic [NODE_TARGET_COL_WIDTH-1:0]       node_col_w;
     logic [NODE_CFG_PACKED_WIDTH-1:0]       local_node_cfg_w;
     logic [NODE_SEED_WIDTH-1:0]             local_node_seed_w;
     logic                                   clr_local_all_pulse_w;
+
     logic                                   node_load_pulse_w;
 
-    logic                                   cfg_edge_we_w;
+    logic                                   cfg_edge_we_pulse_w;
     logic                                   cfg_edge_clr_pulse_w;
     logic [EDGE_TYPE_WIDTH-1:0]             cfg_edge_type_w;
     logic [EDGE_TARGET_ROW_WIDTH-1:0]       cfg_edge_row_w;
@@ -61,7 +68,8 @@ module pbit_top (
 
     logic [NODE_CFG_W-1:0]                  node_rdata_cfg_w;
     logic [NODE_SEED_WIDTH-1:0]             node_rdata_seed_w;
-    logic                                   node_rdata_pulse_w;
+    logic                                   node_rdata_cfg_pulse_w;
+    logic                                   node_rdata_seed_pulse_w;
 
     logic [EDGE_RDATA_PACKED_WIDTH-1:0]     edge_rdata_cfg_w;
     logic                                   edge_rdata_pulse_w;
@@ -110,23 +118,27 @@ module pbit_top (
         .global_node_cfg_o(global_node_cfg_w),
         .global_node_seed_o(global_node_seed_w),
         .global_node_cfg_vld_o(global_node_cfg_vld_w),
+        .global_node_seed_vld_o(global_node_seed_vld_w),
 
         .row_node_cfg_o(row_node_cfg_w),
         .row_node_seed_o(row_node_seed_w),
         .row_node_cfg_vld_o(row_node_cfg_vld_w),
+        .row_node_seed_vld_o(row_node_seed_vld_w),
 
-        .local_node_we_pulse_o(local_node_we_pulse_w),
-        .local_node_clr_pulse_o(local_node_clr_pulse_w),
-        .cfg_node_target_mode_o(cfg_node_target_mode_w),
-        .cfg_node_row_o(cfg_node_row_w),
-        .cfg_node_col_o(cfg_node_col_w),
+        .local_node_cfg_we_pulse_o(local_node_cfg_we_pulse_w),
+        .local_node_cfg_clr_pulse_o(local_node_cfg_clr_pulse_w),
+        .local_node_seed_we_pulse_o(local_node_seed_we_pulse_w),
+        .local_node_seed_clr_pulse_o(local_node_seed_clr_pulse_w),
+        .node_target_mode_o(node_target_mode_w),
+        .node_row_o(node_row_w),
+        .node_col_o(node_col_w),
         .local_node_cfg_o(local_node_cfg_w),
         .local_node_seed_o(local_node_seed_w),
         .clr_local_all_pulse_o(clr_local_all_pulse_w),
 
         .node_load_pulse_o(node_load_pulse_w),
 
-        .cfg_edge_we_o(cfg_edge_we_w),
+        .cfg_edge_we_pulse_o(cfg_edge_we_pulse_w),
         .cfg_edge_clr_pulse_o(cfg_edge_clr_pulse_w),
         .cfg_edge_type_o(cfg_edge_type_w),
         .cfg_edge_row_o(cfg_edge_row_w),
@@ -137,7 +149,8 @@ module pbit_top (
 
         .node_rdata_cfg_i(node_rdata_cfg_w),
         .node_rdata_seed_i(node_rdata_seed_w),
-        .node_rdata_pulse_o(node_rdata_pulse_w),
+        .node_rdata_cfg_pulse_o(node_rdata_cfg_pulse_w),
+        .node_rdata_seed_pulse_o(node_rdata_seed_pulse_w),
 
         .edge_rdata_cfg_i(edge_rdata_cfg_w),
         .edge_rdata_pulse_o(edge_rdata_pulse_w)
@@ -161,28 +174,31 @@ module pbit_top (
 
         .glb_soft_rstn_i        (glb_soft_rstn_w),
         .num_majority_i         (num_majority_w),
-        .run_done_clr_pulse_i   (run_done_clr_pulse_w),  
 
         .global_node_cfg_i      (global_node_cfg_w),
         .global_node_seed_i     (global_node_seed_w),
         .global_node_cfg_vld_i  (global_node_cfg_vld_w),
+        .global_node_seed_vld_i  (global_node_seed_vld_w),
 
         .row_node_cfg_i         (row_node_cfg_w),
         .row_node_seed_i        (row_node_seed_w),
         .row_node_cfg_vld_i     (row_node_cfg_vld_w),
+        .row_node_seed_vld_i    (row_node_seed_vld_w),
 
-        .local_node_we_pulse_i  (local_node_we_pulse_w),
-        .local_node_clr_pulse_i (local_node_clr_pulse_w),
-        .cfg_node_target_mode_i (cfg_node_target_mode_w),
-        .cfg_node_row_i         (cfg_node_row_w),
-        .cfg_node_col_i         (cfg_node_col_w),
-        .local_node_cfg_i       (local_node_cfg_w),
-        .local_node_seed_i      (local_node_seed_w),
-        .clr_local_all_pulse_i  (clr_local_all_pulse_w),
+        .local_node_cfg_we_pulse_i   (local_node_cfg_we_pulse_w),
+        .local_node_cfg_clr_pulse_i  (local_node_cfg_clr_pulse_w),
+        .local_node_seed_we_pulse_i  (local_node_seed_we_pulse_w),
+        .local_node_seed_clr_pulse_i (local_node_seed_clr_pulse_w),
+        .node_target_mode_i          (node_target_mode_w),
+        .node_row_i                  (node_row_w),
+        .node_col_i                  (node_col_w),
+        .local_node_cfg_i            (local_node_cfg_w),
+        .local_node_seed_i           (local_node_seed_w),
+        .clr_local_all_pulse_i       (clr_local_all_pulse_w),
 
         .node_load_pulse_i      (node_load_pulse_w),
 
-        .cfg_edge_we_i          (cfg_edge_we_w),
+        .cfg_edge_we_pulse_i    (cfg_edge_we_pulse_w),
         .cfg_edge_clr_pulse_i   (cfg_edge_clr_pulse_w),
         .cfg_edge_type_i        (cfg_edge_type_w),
         .cfg_edge_row_i         (cfg_edge_row_w),
@@ -191,7 +207,8 @@ module pbit_top (
         .cfg_edge_sign_i        (cfg_edge_sign_w),
         .cfg_edge_valid_i       (cfg_edge_valid_w),
 
-        .node_rdata_pulse_i     (node_rdata_pulse_w),
+        .node_rdata_cfg_pulse_i (node_rdata_cfg_pulse_w),
+        .node_rdata_seed_pulse_i(node_rdata_seed_pulse_w),
         .node_rdata_cfg_o       (node_rdata_cfg_w),
         .node_rdata_seed_o      (node_rdata_seed_w),
 
@@ -205,32 +222,33 @@ module pbit_top (
     );
 
     phase_ctrl_4color u_phase_ctrl_4color (
-        .clk               (clk),
-        .rst_n             (rst_n),
-        .glb_soft_rstn_i   (glb_soft_rstn_w),
-
-        .cfg_done_i        (cfg_done_w),
-        .run_start_pulse_i (run_start_pulse_w),
-        .num_sweeps_i      (num_sweeps_w),
-
-        .i0_level_i        (i0_level_arr_w),
-
-        .sweep_interval_i  (sweep_interval_w),
-
-        .all_done_c0_i     (all_done_c0_w),
-        .all_done_c1_i     (all_done_c1_w),
-        .all_done_c2_i     (all_done_c2_w),
-        .all_done_c3_i     (all_done_c3_w),
-
-        .phase_start_c0_o  (phase_start_c0_w),
-        .phase_start_c1_o  (phase_start_c1_w),
-        .phase_start_c2_o  (phase_start_c2_w),
-        .phase_start_c3_o  (phase_start_c3_w),
-
-        .i0_level_o        (i0_level_w),
-
-        .run_busy_o        (run_busy_w),
-        .run_done_o        (run_done_w)
+        .clk                  (clk),
+        .rst_n                (rst_n),
+        .glb_soft_rstn_i      (glb_soft_rstn_w),
+   
+        .cfg_done_i           (cfg_done_w),
+        .run_start_pulse_i    (run_start_pulse_w),
+        .run_done_clr_pulse_i (run_done_clr_pulse_w),  
+        .num_sweeps_i         (num_sweeps_w),
+   
+        .i0_level_i           (i0_level_arr_w),
+   
+        .sweep_interval_i     (sweep_interval_w),
+   
+        .all_done_c0_i        (all_done_c0_w),
+        .all_done_c1_i        (all_done_c1_w),
+        .all_done_c2_i        (all_done_c2_w),
+        .all_done_c3_i        (all_done_c3_w),
+   
+        .phase_start_c0_o     (phase_start_c0_w),
+        .phase_start_c1_o     (phase_start_c1_w),
+        .phase_start_c2_o     (phase_start_c2_w),
+        .phase_start_c3_o     (phase_start_c3_w),
+   
+        .i0_level_o           (i0_level_w),
+   
+        .run_busy_o           (run_busy_w),
+        .run_done_o           (run_done_w)
     );
 
 endmodule

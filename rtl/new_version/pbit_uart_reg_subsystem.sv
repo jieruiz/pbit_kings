@@ -45,16 +45,20 @@ module pbit_uart_reg_subsystem (
     output logic [NODE_CFG_W-1:0]                  global_node_cfg_o,
     output logic [NODE_SEED_WIDTH-1:0]             global_node_seed_o,
     output logic                                   global_node_cfg_vld_o,
+    output logic                                   global_node_seed_vld_o,
   
     output logic [NODE_CFG_W-1:0]                  row_node_cfg_o[ROWS],
-    output logic [NODE_SEED_WIDTH-1:0]             row_node_seed_o[ROWS],
+    output logic [NODE_SEED_WIDTH-1:0]             row_node_seed_o[SEED_ROWS],
     output logic [ROWS-1:0]                        row_node_cfg_vld_o,
-  
-    output logic                                   local_node_we_pulse_o,
-    output logic                                   local_node_clr_pulse_o,
-    output logic [TARGET_MODE_WIDTH-1:0]           cfg_node_target_mode_o,
-    output logic [NODE_TARGET_ROW_WIDTH-1:0]       cfg_node_row_o,
-    output logic [NODE_TARGET_COL_WIDTH-1:0]       cfg_node_col_o,
+    output logic [SEED_ROWS-1:0]                   row_node_seed_vld_o,
+
+    output logic                                   local_node_cfg_we_pulse_o,
+    output logic                                   local_node_cfg_clr_pulse_o,
+    output logic                                   local_node_seed_we_pulse_o,
+    output logic                                   local_node_seed_clr_pulse_o,
+    output logic [TARGET_MODE_WIDTH-1:0]           node_target_mode_o,
+    output logic [NODE_TARGET_ROW_WIDTH-1:0]       node_row_o,
+    output logic [NODE_TARGET_COL_WIDTH-1:0]       node_col_o,
     output logic [NODE_CFG_PACKED_WIDTH-1:0]       local_node_cfg_o,
     output logic [NODE_SEED_WIDTH-1:0]             local_node_seed_o,
     output logic                                   clr_local_all_pulse_o,
@@ -62,7 +66,7 @@ module pbit_uart_reg_subsystem (
     output logic                                   node_load_pulse_o,
    
     // Edge configuration   
-    output logic                                   cfg_edge_we_o,
+    output logic                                   cfg_edge_we_pulse_o,
     output logic                                   cfg_edge_clr_pulse_o,
     output logic [EDGE_TYPE_WIDTH-1:0]             cfg_edge_type_o,
     output logic [EDGE_TARGET_ROW_WIDTH-1:0]       cfg_edge_row_o,
@@ -74,7 +78,8 @@ module pbit_uart_reg_subsystem (
     //Node readback IO   
     input  logic [NODE_CFG_W-1:0]                  node_rdata_cfg_i,
     input  logic [NODE_SEED_WIDTH-1:0]             node_rdata_seed_i,
-    output logic                                   node_rdata_pulse_o,
+    output logic                                   node_rdata_cfg_pulse_o,
+    output logic                                   node_rdata_seed_pulse_o,
    
     //Edge readback IO   
     input  logic [EDGE_RDATA_PACKED_WIDTH-1:0]     edge_rdata_cfg_i,
@@ -149,23 +154,27 @@ module pbit_uart_reg_subsystem (
         .global_node_cfg_o           (global_node_cfg_o),
         .global_node_seed_o          (global_node_seed_o),
         .global_node_cfg_vld_o       (global_node_cfg_vld_o),
+        .global_node_seed_vld_o      (global_node_seed_vld_o),
 
         .row_node_cfg_o              (row_node_cfg_o),
         .row_node_seed_o             (row_node_seed_o),
         .row_node_cfg_vld_o          (row_node_cfg_vld_o),
+        .row_node_seed_vld_o         (row_node_seed_vld_o),
 
-        .local_node_we_pulse_o       (local_node_we_pulse_o),
-        .local_node_clr_pulse_o      (local_node_clr_pulse_o),
-        .cfg_node_target_mode_o      (cfg_node_target_mode_o),
-        .cfg_node_row_o              (cfg_node_row_o),
-        .cfg_node_col_o              (cfg_node_col_o),
+        .local_node_cfg_we_pulse_o   (local_node_cfg_we_pulse_o),
+        .local_node_cfg_clr_pulse_o  (local_node_cfg_clr_pulse_o),
+        .local_node_seed_we_pulse_o  (local_node_seed_we_pulse_o),
+        .local_node_seed_clr_pulse_o (local_node_seed_clr_pulse_o),
+        .node_target_mode_o          (node_target_mode_o),
+        .node_row_o                  (node_row_o),
+        .node_col_o                  (node_col_o),
         .local_node_cfg_o            (local_node_cfg_o),
         .local_node_seed_o           (local_node_seed_o),
         .clr_local_all_pulse_o       (clr_local_all_pulse_o),
 
         .node_load_pulse_o           (node_load_pulse_o),
 
-        .cfg_edge_we_pulse_o         (cfg_edge_we_o),
+        .cfg_edge_we_pulse_o         (cfg_edge_we_pulse_o),
         .cfg_edge_clr_pulse_o        (cfg_edge_clr_pulse_o),
         .cfg_edge_type_o             (cfg_edge_type_o),
         .cfg_edge_row_o              (cfg_edge_row_o),
@@ -176,7 +185,8 @@ module pbit_uart_reg_subsystem (
 
         .node_rdata_cfg_i            (node_rdata_cfg_i),
         .node_rdata_seed_i           (node_rdata_seed_i),
-        .node_rdata_pulse_o          (node_rdata_pulse_o),
+        .node_rdata_cfg_pulse_o      (node_rdata_cfg_pulse_o),
+        .node_rdata_seed_pulse_o     (node_rdata_seed_pulse_o),
 
         .edge_rdata_cfg_i            (edge_rdata_cfg_i),
         .edge_rdata_pulse_o          (edge_rdata_pulse_o)

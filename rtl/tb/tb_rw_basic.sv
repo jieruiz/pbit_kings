@@ -47,7 +47,6 @@ module tb_rw_basic;
 
     function automatic logic [31:0] pack_node_cfg(
         input logic init_valid,
-        input logic seed_valid,
         input logic clamp_valid,
         input logic bias_valid,
         input logic init_spin,
@@ -58,7 +57,6 @@ module tb_rw_basic;
     );
         pack_node_cfg = '0;
         pack_node_cfg[INIT_VALID_MSB:INIT_VALID_LSB] = init_valid;
-        pack_node_cfg[SEED_VALID_MSB:SEED_VALID_LSB] = seed_valid;
         pack_node_cfg[CLAMP_VALID_MSB:CLAMP_VALID_LSB] = clamp_valid;
         pack_node_cfg[BIAS_VALID_MSB:BIAS_VALID_LSB] = bias_valid;
         pack_node_cfg[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB] = init_spin;
@@ -80,17 +78,23 @@ module tb_rw_basic;
 
     function automatic logic [31:0] pack_node_cmd(
         input logic apply_cfg,
-        input logic load_cfg,
-        input logic clear_scope_en,
+        input logic apply_seed,
+        input logic load_node,
+        input logic clear_cfg_scope_en,
+        input logic clear_seed_scope_en,
         input logic clear_local_all,
-        input logic readback_node
+        input logic readback_cfg,
+        input logic readback_seed
     );
         pack_node_cmd = '0;
         pack_node_cmd[APPLY_CFG_MSB:APPLY_CFG_LSB] = apply_cfg;
-        pack_node_cmd[LOAD_CFG_MSB:LOAD_CFG_LSB] = load_cfg;
-        pack_node_cmd[CLEAR_SCOPE_EN_MSB:CLEAR_SCOPE_EN_LSB] = clear_scope_en;
+        pack_node_cmd[APPLY_SEED_MSB:APPLY_SEED_LSB] = apply_seed;
+        pack_node_cmd[LOAD_NODE_MSB:LOAD_NODE_LSB] = load_node;
+        pack_node_cmd[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB] = clear_cfg_scope_en;
+        pack_node_cmd[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB] = clear_seed_scope_en;
         pack_node_cmd[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB] = clear_local_all;
-        pack_node_cmd[READBACK_NODE_MSB:READBACK_NODE_LSB] = readback_node;
+        pack_node_cmd[READBACK_CFG_MSB:READBACK_CFG_LSB] = readback_cfg;
+        pack_node_cmd[READBACK_SEED_MSB:READBACK_SEED_LSB] = readback_seed;
     endfunction
 
     function automatic logic [31:0] pack_edge_target(
@@ -285,7 +289,8 @@ module tb_rw_basic;
     endtask
 
     initial begin
-        logic [31:0] node_target_word;
+        logic [31:0] node_cfg_target_word;
+        logic [31:0] node_seed_target_word;
         logic [31:0] node_cfg_word;
         logic [31:0] node_seed_word;
         logic [31:0] node_rdata_expected;
@@ -302,9 +307,11 @@ module tb_rw_basic;
                     {N_SPIN_WIDTH'(N_SPIN), COLS_WIDTH'(COLS), ROWS_WIDTH'(ROWS)},
                     "array param");
 
-        node_target_word = pack_node_target(TARGET_MODE_LOCAL, 6'd5, 6'd6);
+        node_cfg_target_word = pack_node_target(TARGET_MODE_LOCAL, 6'd5, 6'd6);
+        // Shared LFSR seeds are addressed by 2x2 tile coordinate, so node (5,6)
+        // uses seed tile (2,3), not physical node coordinate (5,6).
+        node_seed_target_word = pack_node_target(TARGET_MODE_LOCAL, 6'd2, 6'd3);
         node_cfg_word = pack_node_cfg(.init_valid(1'b1),
-                                      .seed_valid(1'b1),
                                       .clamp_valid(1'b1),
                                       .bias_valid(1'b1),
                                       .init_spin(1'b1),
@@ -322,18 +329,30 @@ module tb_rw_basic;
                                                        .bias_sign(1'b1),
                                                        .bias_prob(7'h35))};
 
-        write_reg(A_NODE_TARGET, node_target_word, "node target");
-        read_expect(A_NODE_TARGET, node_target_word, "node target staging");
+        write_reg(A_NODE_TARGET, node_cfg_target_word, "node cfg target");
+        read_expect(A_NODE_TARGET, node_cfg_target_word, "node cfg target staging");
         write_reg(A_NODE_CFG, node_cfg_word, "node cfg");
         read_expect(A_NODE_CFG, node_cfg_word, "node cfg staging");
+
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
+        repeat (4) @(posedge clk);
+
+        write_reg(A_NODE_TARGET, node_seed_target_word, "node seed target");
+        read_expect(A_NODE_TARGET, node_seed_target_word, "node seed target staging");
         write_reg(A_NODE_SEED, node_seed_word, "node seed");
         read_expect(A_NODE_SEED, node_seed_word, "node seed staging");
 
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0), "node apply");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node seed apply");
         repeat (4) @(posedge clk);
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b1), "node readback trigger");
+
+        write_reg(A_NODE_TARGET, node_cfg_target_word, "node cfg readback target");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0), "node cfg readback trigger");
         repeat (4) @(posedge clk);
         read_expect(A_NODE_RDATA_CFG, node_rdata_expected, "node applied cfg readback");
+
+        write_reg(A_NODE_TARGET, node_seed_target_word, "node seed readback target");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b1), "node seed readback trigger");
+        repeat (4) @(posedge clk);
         read_expect(A_NODE_RDATA_SEED, node_seed_word, "node applied seed readback");
 
         check_edge_rw(EDGE_TYPE_EDGE_H,   6'd3, 6'd4, 7'h21, 1'b1, "H");

@@ -9,6 +9,9 @@ module tb_run_3x3_majority;
     localparam logic [7:0] OP_WRITE = 8'h01;
     localparam logic [7:0] OP_READ  = 8'h02;
 
+    localparam int unsigned MAJORITY_STAT_TRIALS = 16;
+    localparam int unsigned MAJORITY_MIN_CENTER_ONES = 10;
+
     typedef enum logic [7:0] {
         ST_OK       = 8'h00,
         ST_BAD      = 8'h01,
@@ -48,6 +51,14 @@ module tb_run_3x3_majority;
         pack_global_cfg = '0;
         pack_global_cfg[NUM_SWEEP_MSB:NUM_SWEEP_LSB] = num_sweeps;
         pack_global_cfg[NUM_MAJORITY_MSB:NUM_MAJORITY_LSB] = num_majority;
+    endfunction
+
+    function automatic logic [31:0] pack_global_cfg_actual(
+        input logic [NUM_SWEEP_WIDTH-1:0] actual_num_sweeps,
+        input logic [NUM_MAJORITY_WIDTH-1:0] actual_num_majority
+    );
+        // New shared-LFSR RTL stores sweep/majority registers as actual value minus one.
+        pack_global_cfg_actual = pack_global_cfg(actual_num_sweeps - 1'b1, actual_num_majority - 1'b1);
     endfunction
 
     function automatic logic [31:0] pack_global_ctrl(
@@ -91,6 +102,14 @@ module tb_run_3x3_majority;
         pack_sweep_intervals[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB] = i1;
     endfunction
 
+    function automatic logic [31:0] pack_sweep_intervals_actual(
+        input logic [SWEEP_INTERVAL_WIDTH-1:0] actual_i0,
+        input logic [SWEEP_INTERVAL_WIDTH-1:0] actual_i1
+    );
+        // New phase controller also stores sweep intervals as actual value minus one.
+        pack_sweep_intervals_actual = pack_sweep_intervals(actual_i0 - 1'b1, actual_i1 - 1'b1);
+    endfunction
+
     function automatic logic [31:0] pack_node_target(
         input logic [TARGET_MODE_WIDTH-1:0]     mode,
         input logic [NODE_TARGET_ROW_WIDTH-1:0] row,
@@ -109,7 +128,6 @@ module tb_run_3x3_majority;
     );
         pack_node_cfg = '0;
         pack_node_cfg[INIT_VALID_MSB:INIT_VALID_LSB] = 1'b1;
-        pack_node_cfg[SEED_VALID_MSB:SEED_VALID_LSB] = 1'b1;
         pack_node_cfg[CLAMP_VALID_MSB:CLAMP_VALID_LSB] = 1'b1;
         pack_node_cfg[BIAS_VALID_MSB:BIAS_VALID_LSB] = 1'b1;
         pack_node_cfg[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB] = init_spin;
@@ -121,17 +139,23 @@ module tb_run_3x3_majority;
 
     function automatic logic [31:0] pack_node_cmd(
         input logic apply_cfg,
-        input logic load_cfg,
-        input logic clear_scope_en,
+        input logic apply_seed,
+        input logic load_node,
+        input logic clear_cfg_scope_en,
+        input logic clear_seed_scope_en,
         input logic clear_local_all,
-        input logic readback_node
+        input logic readback_cfg,
+        input logic readback_seed
     );
         pack_node_cmd = '0;
         pack_node_cmd[APPLY_CFG_MSB:APPLY_CFG_LSB] = apply_cfg;
-        pack_node_cmd[LOAD_CFG_MSB:LOAD_CFG_LSB] = load_cfg;
-        pack_node_cmd[CLEAR_SCOPE_EN_MSB:CLEAR_SCOPE_EN_LSB] = clear_scope_en;
+        pack_node_cmd[APPLY_SEED_MSB:APPLY_SEED_LSB] = apply_seed;
+        pack_node_cmd[LOAD_NODE_MSB:LOAD_NODE_LSB] = load_node;
+        pack_node_cmd[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB] = clear_cfg_scope_en;
+        pack_node_cmd[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB] = clear_seed_scope_en;
         pack_node_cmd[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB] = clear_local_all;
-        pack_node_cmd[READBACK_NODE_MSB:READBACK_NODE_LSB] = readback_node;
+        pack_node_cmd[READBACK_CFG_MSB:READBACK_CFG_LSB] = readback_cfg;
+        pack_node_cmd[READBACK_SEED_MSB:READBACK_SEED_LSB] = readback_seed;
     endfunction
 
     function automatic logic [31:0] pack_edge_target(
@@ -281,21 +305,33 @@ module tb_run_3x3_majority;
         repeat (20) @(posedge clk);
     endtask
 
-    task automatic configure_one_node(input int unsigned row, input int unsigned col);
+    task automatic configure_one_node(
+        input int unsigned row,
+        input int unsigned col,
+        input int unsigned trial_idx
+    );
         logic is_center;
         logic spin_value;
         logic clamp_en;
         logic [31:0] seed;
+        int unsigned seed_row;
+        int unsigned seed_col;
 
         is_center = (row == 1) && (col == 1);
         spin_value = is_center ? 1'b0 : boundary_pattern(row, col);
         clamp_en = !is_center;
-        seed = 32'h5100_0001 + (row * 16) + col;
+        seed_row = row / 2;
+        seed_col = col / 2;
+        seed = 32'h5100_0001 + (seed_row * 16) + seed_col + (trial_idx * 32'h0001_0101);
 
         write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, row[5:0], col[5:0]), "node target");
         write_reg(A_NODE_CFG, pack_node_cfg(spin_value, clamp_en, spin_value), "node cfg");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
+
+        // Shared-LFSR RTL configures one seed per 2x2 tile, so seed target uses tile coordinates.
+        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, seed_row[5:0], seed_col[5:0]), "seed target");
         write_reg(A_NODE_SEED, seed, "node seed");
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0), "node apply");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node seed apply");
         repeat (2) @(posedge clk);
     endtask
 
@@ -310,10 +346,10 @@ module tb_run_3x3_majority;
         repeat (2) @(posedge clk);
     endtask
 
-    task automatic configure_3x3_nodes();
+    task automatic configure_3x3_nodes(input int unsigned trial_idx);
         for (int r = 0; r < 3; r++) begin
             for (int c = 0; c < 3; c++) begin
-                configure_one_node(r, c);
+                configure_one_node(r, c, trial_idx);
             end
         end
     endtask
@@ -335,10 +371,10 @@ module tb_run_3x3_majority;
         logic [31:0] rdata;
         logic [31:0] expected_global_cfg;
 
-        expected_global_cfg = pack_global_cfg(24'd8, num_majority);
+        expected_global_cfg = pack_global_cfg_actual(24'd8, num_majority);
         write_reg(A_GLOBAL_CFG, expected_global_cfg, "global cfg");
         write_reg(A_I0_LEVEL0, pack_i0_levels(6'd63, 6'd63, 6'd63, 6'd63), "i0 level0");
-        write_reg(A_SWEEP_INTERVAL0, pack_sweep_intervals(16'd1, 16'd1), "sweep interval0");
+        write_reg(A_SWEEP_INTERVAL0, pack_sweep_intervals_actual(16'd1, 16'd1), "sweep interval0");
         read_reg(A_GLOBAL_CFG, rdata, "global cfg readback");
         report_mismatch("global cfg readback", rdata, expected_global_cfg);
 
@@ -441,7 +477,8 @@ module tb_run_3x3_majority;
     endtask
 
     task automatic check_3x3_snapshot(
-        input logic [NUM_MAJORITY_WIDTH-1:0] num_majority
+        input  logic [NUM_MAJORITY_WIDTH-1:0] num_majority,
+        output logic                          center_spin
     );
         logic [31:0] spin0;
         logic [31:0] spin1;
@@ -452,10 +489,10 @@ module tb_run_3x3_majority;
         read_reg(A_SPIN_RDATA0, spin0, "spin rdata0");
         read_reg(A_SPIN_RDATA1, spin1, "spin rdata1");
         read_reg(A_SPIN_RDATA2, spin2, "spin rdata2");
+        center_spin = 1'b0;
 
         for (int r = 0; r < 3; r++) begin
             for (int c = 0; c < 3; c++) begin
-                expected = ((r == 1) && (c == 1)) ? 1'b1 : boundary_pattern(r, c);
                 case (r)
                     0: actual = spin0[c];
                     1: actual = spin1[8 + c];
@@ -463,29 +500,76 @@ module tb_run_3x3_majority;
                     default: actual = 1'b0;
                 endcase
 
-                if (actual !== expected) begin
-                    error_count++;
-                    $error("[RUN_3X3_MAJORITY] num_majority=%0d spin[%0d][%0d]=%0b expected=%0b time=%0t",
-                           num_majority, r, c, actual, expected, $time);
+                if ((r == 1) && (c == 1)) begin
+                    // The center node is intentionally free-running, so its stochastic majority result
+                    // is checked statistically across fixed seed trials instead of as a one-shot assertion.
+                    center_spin = actual;
+                    if (^actual === 1'bx) begin
+                        error_count++;
+                        $error("[RUN_3X3_MAJORITY] num_majority=%0d spin[%0d][%0d] is unknown time=%0t",
+                               num_majority, r, c, $time);
+                    end
+                end else begin
+                    expected = boundary_pattern(r, c);
+
+                    if (actual !== expected) begin
+                        error_count++;
+                        $error("[RUN_3X3_MAJORITY] num_majority=%0d spin[%0d][%0d]=%0b expected=%0b time=%0t",
+                               num_majority, r, c, actual, expected, $time);
+                    end
                 end
             end
         end
     endtask
 
-    task automatic run_majority_case(
-        input logic [NUM_MAJORITY_WIDTH-1:0] num_majority
+    task automatic run_majority_trial(
+        input  logic [NUM_MAJORITY_WIDTH-1:0] num_majority,
+        input  int unsigned                   trial_idx,
+        output logic                          center_spin
     );
-        $display("[RUN_3X3_MAJORITY] start num_majority=%0d", num_majority);
+        $display("[RUN_3X3_MAJORITY] start num_majority=%0d trial=%0d", num_majority, trial_idx);
         hard_reset();
         configure_run_registers(num_majority);
-        configure_3x3_nodes();
+        configure_3x3_nodes(trial_idx);
         configure_center_edges();
         start_run_and_wait_done(num_majority);
         latch_snapshot0();
-        check_3x3_snapshot(num_majority);
-        $display("[RUN_3X3_MAJORITY] finish num_majority=%0d center_spin=%0b",
+        check_3x3_snapshot(num_majority, center_spin);
+        $display("[RUN_3X3_MAJORITY] finish num_majority=%0d trial=%0d center_spin=%0b",
                  num_majority,
-                 u_pbit_top.u_pbit_array_kings.spin_flat[41]);
+                 trial_idx,
+                 center_spin);
+    endtask
+
+    task automatic run_majority_case(
+        input logic [NUM_MAJORITY_WIDTH-1:0] num_majority
+    );
+        int unsigned center_one_count;
+        logic center_spin;
+
+        center_one_count = 0;
+        for (int trial = 0; trial < MAJORITY_STAT_TRIALS; trial++) begin
+            run_majority_trial(num_majority, trial, center_spin);
+            if (center_spin) begin
+                center_one_count++;
+            end
+        end
+
+        $display("[RUN_3X3_MAJORITY_STAT] num_majority=%0d center_one=%0d/%0d min_expected=%0d",
+                 num_majority,
+                 center_one_count,
+                 MAJORITY_STAT_TRIALS,
+                 MAJORITY_MIN_CENTER_ONES);
+
+        if (center_one_count < MAJORITY_MIN_CENTER_ONES) begin
+            error_count++;
+            $error("[RUN_3X3_MAJORITY_STAT] num_majority=%0d center_one=%0d/%0d below min_expected=%0d time=%0t",
+                   num_majority,
+                   center_one_count,
+                   MAJORITY_STAT_TRIALS,
+                   MAJORITY_MIN_CENTER_ONES,
+                   $time);
+        end
     endtask
 
     initial begin

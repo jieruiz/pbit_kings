@@ -463,50 +463,48 @@ def make_randrange_seed(rng: random.Random):
     return seed if seed != 0 else 1
 
 
-def build_node_data(physical_nodes, num_runs, seed_master_start, seed_master_step, run_seed):
-    node_seeds = []
-    init_spins = []
+def build_tile_seeds(num_runs, seed_master_start, seed_master_step, seed_rows, seed_cols):
+    tile_seeds = []
     global_seeds = []
     for run_idx in range(num_runs):
         seed_master = seed_master_start + run_idx * seed_master_step
         seed_rng = random.Random(seed_master)
-        spin_rng = random.Random(run_seed + run_idx)
         global_seeds.append(make_seed(seed_rng))
-        node_seeds.append([make_seed(seed_rng) for _ in physical_nodes])
+        tile_seeds.append([make_seed(seed_rng) for _ in range(seed_rows * seed_cols)])
+    return tile_seeds, global_seeds
+
+
+def build_node_data(physical_nodes, num_runs, seed_master_start, seed_master_step, run_seed, seed_rows, seed_cols):
+    init_spins = []
+    tile_seeds, global_seeds = build_tile_seeds(num_runs, seed_master_start, seed_master_step, seed_rows, seed_cols)
+    for run_idx in range(num_runs):
+        spin_rng = random.Random(run_seed + run_idx)
         init_spins.append([1 if spin_rng.randrange(2) else 0 for _ in physical_nodes])
-    return node_seeds, init_spins, global_seeds
+    return tile_seeds, init_spins, global_seeds
 
 
-def build_maxcut_node_data(physical_nodes, num_runs, seed_master_start, seed_master_step, run_seed, kings_cols):
-    node_seeds = []
+def build_maxcut_node_data(physical_nodes, num_runs, seed_master_start, seed_master_step, run_seed, seed_rows, seed_cols):
+    tile_seeds = []
     init_spins = []
     global_seeds = []
-    max_row = max(kings_coord(q, kings_cols)[0] for q in physical_nodes)
-    tile_rows = (max(kings_cols, max_row + 1) + 1) // 2
-    tile_cols = (kings_cols + 1) // 2
 
     for run_idx in range(num_runs):
         seed_master = seed_master_start + run_idx * seed_master_step
         tile_rng = random.Random(seed_master)
-        tile_seeds = [make_randrange_seed(tile_rng) for _ in range(tile_rows * tile_cols)]
+        run_tile_seeds = [make_randrange_seed(tile_rng) for _ in range(seed_rows * seed_cols)]
         init_rng = random.Random(seed_master ^ 0x5A171234)
 
-        run_node_seeds = []
         run_init_spins = []
         for q in physical_nodes:
-            row, col = kings_coord(q, kings_cols)
-            tile_id = (row // 2) * tile_cols + (col // 2)
-            seed = (tile_seeds[tile_id] ^ ((q + 1) * 0x9E3779B9)) & 0xFFFFFFFF
-            run_node_seeds.append(seed if seed != 0 else 1)
             run_init_spins.append(init_rng.randrange(0, 2))
 
-        node_seeds.append(run_node_seeds)
+        tile_seeds.append(run_tile_seeds)
         init_spins.append(run_init_spins)
-        # This value is a run label for logs in the unified TB; individual
-        # p-bit LFSR seeds above are what the hardware actually receives.
+        # This value is a run label for logs in the unified TB; shared tile
+        # LFSR seeds above are what the hardware actually receives.
         global_seeds.append(make_seed(random.Random(run_seed + run_idx)))
 
-    return node_seeds, init_spins, global_seeds
+    return tile_seeds, init_spins, global_seeds
 
 
 def nearest_i0_level(i0_table, target_i0):
@@ -585,6 +583,10 @@ def problem_from_spec(spec_path: Path, spec):
     kings_rows = int(hw.get("kings_rows", 20))
     kings_cols = int(hw.get("kings_cols", 19))
     num_runs = int(run.get("num_runs", 1))
+    rtl_rows = int(hw.get("rtl_rows", kings_rows))
+    rtl_cols = int(hw.get("rtl_cols", kings_cols))
+    seed_rows = (rtl_rows + 1) // 2
+    seed_cols = (rtl_cols + 1) // 2
 
     if kind == "maxcut":
         W = load_matrix(resolve_path(spec_path, inputs["weights"]))
@@ -695,24 +697,27 @@ def problem_from_spec(spec_path: Path, spec):
         bias_sign = [1 for _ in physical_nodes]
 
     config_edges = build_config_edges(physical_nodes, prob, sign, kings_cols)
-    clear_cols = min(kings_cols + 1, int(hw.get("rtl_cols", 40)))
+    clear_cols = min(kings_cols + 1, rtl_cols)
     clear_edges = build_clear_edges(kings_rows, clear_cols)
     if kind == "maxcut":
-        node_seeds, init_spins, global_seeds = build_maxcut_node_data(
+        tile_seeds, init_spins, global_seeds = build_maxcut_node_data(
             physical_nodes,
             num_runs,
             int(run.get("seed_master_start", run.get("seed_master", 2461))),
             int(run.get("seed_master_step", 1)),
             int(run.get("run_seed", 314592)),
-            kings_cols,
+            seed_rows,
+            seed_cols,
         )
     else:
-        node_seeds, init_spins, global_seeds = build_node_data(
+        tile_seeds, init_spins, global_seeds = build_node_data(
             physical_nodes,
             num_runs,
             int(run.get("seed_master_start", run.get("seed_master", 2461))),
             int(run.get("seed_master_step", 10)),
             int(run.get("run_seed", 314592)),
+            seed_rows,
+            seed_cols,
         )
     i0_levels = build_i0_levels(run, spec_path)
     num_sweeps, intervals = build_intervals(run, len(i0_levels))
@@ -720,7 +725,7 @@ def problem_from_spec(spec_path: Path, spec):
     if max_neighbors > 8:
         raise ValueError(f"generated physical problem has degree {max_neighbors}, exceeds RTL limit 8")
     chain_start, chain_phys_idx = chain_arrays(mapping, phys_to_idx)
-    max_flat = max((kings_coord(q, kings_cols)[0] * int(hw.get("rtl_cols", 40))) +
+    max_flat = max((kings_coord(q, kings_cols)[0] * rtl_cols) +
                    kings_coord(q, kings_cols)[1] for q in physical_nodes)
     snapshot_width = int(spec.get("snapshot_width", RTL_SNAPSHOT_WIDTH))
     snapshot_pages = int(math.ceil((max_flat + 1) / float(snapshot_width)))
@@ -734,11 +739,15 @@ def problem_from_spec(spec_path: Path, spec):
         "lits_per_clause": lits_per_clause,
         "kings_rows": kings_rows,
         "kings_cols": kings_cols,
+        "rtl_rows": rtl_rows,
+        "rtl_cols": rtl_cols,
+        "seed_rows": seed_rows,
+        "seed_cols": seed_cols,
         "physical_nodes": physical_nodes,
         "phys_to_idx": phys_to_idx,
         "config_edges": config_edges,
         "clear_edges": clear_edges,
-        "node_seeds": node_seeds,
+        "tile_seeds": tile_seeds,
         "init_spins": init_spins,
         "global_seeds": global_seeds,
         "bias_prob": bias_prob,
@@ -796,11 +805,14 @@ def write_data_svh(path: Path, problem):
     lines.append(f"localparam int unsigned PROBLEM_TOTAL_LOGICAL_WEIGHT = {problem['total_weight']};")
     lines.append(f"localparam int unsigned PROBLEM_MIN_PATTERN_MATCHES = {problem['min_pattern_matches']};")
     lines.append(f"localparam int signed PROBLEM_TARGET_ENERGY = {problem['target_energy']};")
+    lines.append(f"localparam int unsigned PROBLEM_SEED_ROWS = {problem['seed_rows']};")
+    lines.append(f"localparam int unsigned PROBLEM_SEED_COLS = {problem['seed_cols']};")
+    lines.append("localparam int unsigned PROBLEM_NUM_TILE_SEEDS = PROBLEM_SEED_ROWS * PROBLEM_SEED_COLS;")
     lines.append("")
     lines.append("logic [5:0] problem_phys_row [PROBLEM_NUM_PHYSICAL];")
     lines.append("logic [5:0] problem_phys_col [PROBLEM_NUM_PHYSICAL];")
     lines.append("logic [31:0] problem_global_seed [PROBLEM_NUM_SEED_RUNS];")
-    lines.append("logic [31:0] problem_node_seed [PROBLEM_NUM_SEED_RUNS][PROBLEM_NUM_PHYSICAL];")
+    lines.append("logic [31:0] problem_tile_seed [PROBLEM_NUM_SEED_RUNS][PROBLEM_NUM_TILE_SEEDS];")
     lines.append("logic problem_node_init_spin [PROBLEM_NUM_SEED_RUNS][PROBLEM_NUM_PHYSICAL];")
     lines.append("logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] problem_node_bias_prob [PROBLEM_NUM_PHYSICAL];")
     lines.append("logic problem_node_bias_sign [PROBLEM_NUM_PHYSICAL];")
@@ -832,8 +844,8 @@ def write_data_svh(path: Path, problem):
     for run_idx, seed in enumerate(problem["global_seeds"]):
         lines.append(f"        problem_global_seed[{run_idx}] = 32'h{seed:08x};")
     for run_idx in range(problem["num_runs"]):
-        for idx, seed in enumerate(problem["node_seeds"][run_idx]):
-            lines.append(f"        problem_node_seed[{run_idx}][{idx}] = 32'h{seed:08x};")
+        for idx, seed in enumerate(problem["tile_seeds"][run_idx]):
+            lines.append(f"        problem_tile_seed[{run_idx}][{idx}] = 32'h{seed:08x};")
         for idx, spin in enumerate(problem["init_spins"][run_idx]):
             lines.append(f"        problem_node_init_spin[{run_idx}][{idx}] = {sv_bit(spin)};")
     lines.extend(sv_assign("problem_node_bias_prob", problem["bias_prob"]))
@@ -1720,12 +1732,13 @@ def main():
     print(f"generated {out_dir / 'problem_score.svh'}")
     print(f"generated {args.filelist}")
     print(
-        "problem={name} kind={kind} logical={logical} physical={physical} "
+        "problem={name} kind={kind} logical={logical} physical={physical} tile_seeds={tile_seeds} "
         "config_edges={config_edges} clear_edges={clear_edges} sweeps={sweeps} runs={runs}".format(
             name=problem["name"],
             kind=problem["kind"],
             logical=problem["num_logical"],
             physical=len(problem["physical_nodes"]),
+            tile_seeds=problem["seed_rows"] * problem["seed_cols"],
             config_edges=len(problem["config_edges"]),
             clear_edges=len(problem["clear_edges"]),
             sweeps=problem["num_sweeps"],

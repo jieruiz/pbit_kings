@@ -2,8 +2,8 @@
   "name": "w50_maxcut",
   "kind": "maxcut",
   "inputs": {
-    "weights": "../../../../../generated_W50.txt",
-    "mapping": "../../../../../KingsGraph_Embedding_W50_Best_19x19.json"
+    "weights": "../inputs/w50_maxcut/generated_W50.txt",
+    "mapping": "../inputs/common/KingsGraph_Embedding_W50_Best_19x19.json"
   },
   "hardware": {
     "kings_rows": 20,
@@ -22,7 +22,7 @@
       "mode": "linear",
       "start": 0.5,
       "end": 6.0,
-      "table": "../../../../anneal_i0_64final_dec.csv"
+      "table": "../inputs/common/anneal_i0_64final_dec.txt"
     }
   },
   "pass": {

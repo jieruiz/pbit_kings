@@ -5,10 +5,10 @@
   "num_logical": 50,
   "lits_per_clause": 3,
   "inputs": {
-    "j": "../../../../../p-bit_withbias/three_sat_10v40c_tile_lfsr_multirun_7_bit_quant/three_sat_10v40c_J50.txt",
-    "bias": "../../../../../p-bit_withbias/three_sat_10v40c_tile_lfsr_multirun_7_bit_quant/three_sat_10v40c_bias50.txt",
-    "clauses": "../../../../../p-bit_withbias/three_sat_10v40c_tile_lfsr_multirun_7_bit_quant/three_sat_10v40c_clauses.txt",
-    "mapping": "../../../../../KingsGraph_Embedding_W50_Best_19x19.json"
+    "j": "../inputs/ksat_10v40c/three_sat_10v40c_J50.txt",
+    "bias": "../inputs/ksat_10v40c/three_sat_10v40c_bias50.txt",
+    "clauses": "../inputs/ksat_10v40c/three_sat_10v40c_clauses.txt",
+    "mapping": "../inputs/common/KingsGraph_Embedding_W50_Best_19x19.json"
   },
   "hardware": {
     "kings_rows": 20,
@@ -28,7 +28,7 @@
       "mode": "fixed",
       "value": 1.0,
       "end": 6.0,
-      "table": "../../../../anneal_i0_64final_dec.csv"
+      "table": "../inputs/common/anneal_i0_64final_dec.txt"
     }
   },
   "pass": {

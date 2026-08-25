@@ -330,7 +330,8 @@ module pbit_array_kings (
                 logic local_start_w;
                 logic local_node_cfg_we_match_w;
                 logic local_node_cfg_clr_pulse_match_w;
-                logic p_up_thr_match_w;
+                // Shared LUT output is a full probability threshold; keep all bits for pbit_node compare.
+                logic [LUT_WIDTH-1:0] p_up_thr_match_w;
                 logic [31:0] lfsr_rnd_32_match_w;
                 assign local_start_w =
                     (CELL_COLOR == 0) ? phase_start_c0_i :

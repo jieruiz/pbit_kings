@@ -85,6 +85,14 @@ module tb_run_3x3_maxcut;
         pack_global_cfg[NUM_MAJORITY_MSB:NUM_MAJORITY_LSB] = num_majority;
     endfunction
 
+    function automatic logic [31:0] pack_global_cfg_actual(
+        input logic [NUM_SWEEP_WIDTH-1:0] actual_num_sweeps,
+        input logic [NUM_MAJORITY_WIDTH-1:0] actual_num_majority
+    );
+        // New shared-LFSR RTL stores sweep/majority registers as actual value minus one.
+        pack_global_cfg_actual = pack_global_cfg(actual_num_sweeps - 1'b1, actual_num_majority - 1'b1);
+    endfunction
+
     function automatic logic [31:0] pack_global_ctrl(
         input logic soft_reset,
         input logic cfg_done_set,
@@ -126,6 +134,14 @@ module tb_run_3x3_maxcut;
         pack_sweep_intervals[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB] = i1;
     endfunction
 
+    function automatic logic [31:0] pack_sweep_intervals_actual(
+        input logic [SWEEP_INTERVAL_WIDTH-1:0] actual_i0,
+        input logic [SWEEP_INTERVAL_WIDTH-1:0] actual_i1
+    );
+        // New phase controller also stores sweep intervals as actual value minus one.
+        pack_sweep_intervals_actual = pack_sweep_intervals(actual_i0 - 1'b1, actual_i1 - 1'b1);
+    endfunction
+
     function automatic logic [31:0] pack_node_target(
         input logic [TARGET_MODE_WIDTH-1:0]     mode,
         input logic [NODE_TARGET_ROW_WIDTH-1:0] row,
@@ -144,7 +160,6 @@ module tb_run_3x3_maxcut;
     );
         pack_node_cfg = '0;
         pack_node_cfg[INIT_VALID_MSB:INIT_VALID_LSB] = 1'b1;
-        pack_node_cfg[SEED_VALID_MSB:SEED_VALID_LSB] = 1'b1;
         pack_node_cfg[CLAMP_VALID_MSB:CLAMP_VALID_LSB] = 1'b1;
         pack_node_cfg[BIAS_VALID_MSB:BIAS_VALID_LSB] = 1'b1;
         pack_node_cfg[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB] = init_spin;
@@ -156,17 +171,23 @@ module tb_run_3x3_maxcut;
 
     function automatic logic [31:0] pack_node_cmd(
         input logic apply_cfg,
-        input logic load_cfg,
-        input logic clear_scope_en,
+        input logic apply_seed,
+        input logic load_node,
+        input logic clear_cfg_scope_en,
+        input logic clear_seed_scope_en,
         input logic clear_local_all,
-        input logic readback_node
+        input logic readback_cfg,
+        input logic readback_seed
     );
         pack_node_cmd = '0;
         pack_node_cmd[APPLY_CFG_MSB:APPLY_CFG_LSB] = apply_cfg;
-        pack_node_cmd[LOAD_CFG_MSB:LOAD_CFG_LSB] = load_cfg;
-        pack_node_cmd[CLEAR_SCOPE_EN_MSB:CLEAR_SCOPE_EN_LSB] = clear_scope_en;
+        pack_node_cmd[APPLY_SEED_MSB:APPLY_SEED_LSB] = apply_seed;
+        pack_node_cmd[LOAD_NODE_MSB:LOAD_NODE_LSB] = load_node;
+        pack_node_cmd[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB] = clear_cfg_scope_en;
+        pack_node_cmd[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB] = clear_seed_scope_en;
         pack_node_cmd[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB] = clear_local_all;
-        pack_node_cmd[READBACK_NODE_MSB:READBACK_NODE_LSB] = readback_node;
+        pack_node_cmd[READBACK_CFG_MSB:READBACK_CFG_LSB] = readback_cfg;
+        pack_node_cmd[READBACK_SEED_MSB:READBACK_SEED_LSB] = readback_seed;
     endfunction
 
     function automatic logic [31:0] pack_edge_target(
@@ -324,14 +345,22 @@ module tb_run_3x3_maxcut;
     );
         logic spin_value;
         logic [31:0] seed;
+        int unsigned seed_row;
+        int unsigned seed_col;
 
         spin_value = init_spin_for(row, col, init_mode);
-        seed = seed_base + (row * 16) + col;
+        seed_row = row / 2;
+        seed_col = col / 2;
+        seed = seed_base + (seed_row * 16) + seed_col;
 
         write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, row[5:0], col[5:0]), "node target");
         write_reg(A_NODE_CFG, pack_node_cfg(spin_value, 1'b0, spin_value), "node cfg");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
+
+        // Shared-LFSR RTL configures one seed per 2x2 tile, so seed target uses tile coordinates.
+        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, seed_row[5:0], seed_col[5:0]), "seed target");
         write_reg(A_NODE_SEED, seed, "node seed");
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0), "node apply");
+        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node seed apply");
         repeat (2) @(posedge clk);
     endtask
 
@@ -424,10 +453,10 @@ module tb_run_3x3_maxcut;
         logic [31:0] expected_si_0;
         logic [31:0] expected_si_1;
 
-        expected_global_cfg = pack_global_cfg(24'd6, NUM_MAJORITY_WIDTH'(5));
+        expected_global_cfg = pack_global_cfg_actual(24'd6, NUM_MAJORITY_WIDTH'(5));
         expected_i0_0 = pack_i0_levels(6'd4, 6'd16, 6'd48, 6'd0);
-        expected_si_0 = pack_sweep_intervals(16'd2, 16'd2);
-        expected_si_1 = pack_sweep_intervals(16'd2, 16'd0);
+        expected_si_0 = pack_sweep_intervals_actual(16'd2, 16'd2);
+        expected_si_1 = pack_sweep_intervals_actual(16'd2, 16'd2);
 
         write_reg(A_GLOBAL_CFG, expected_global_cfg, "global cfg");
         write_reg(A_I0_LEVEL0, expected_i0_0, "i0 level0");

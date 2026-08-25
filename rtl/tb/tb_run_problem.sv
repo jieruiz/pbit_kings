@@ -74,6 +74,14 @@ module tb_run_problem;
         pack_global_cfg[NUM_MAJORITY_MSB:NUM_MAJORITY_LSB] = num_majority;
     endfunction
 
+    function automatic logic [31:0] pack_global_cfg_actual(
+        input logic [NUM_SWEEP_WIDTH-1:0] actual_num_sweeps,
+        input logic [NUM_MAJORITY_WIDTH-1:0] actual_num_majority
+    );
+        // Shared-LFSR/LUT RTL stores sweep/majority registers as actual value minus one.
+        pack_global_cfg_actual = pack_global_cfg(actual_num_sweeps - 1'b1, actual_num_majority - 1'b1);
+    endfunction
+
     function automatic logic [31:0] pack_global_ctrl(
         input logic soft_reset,
         input logic cfg_done_set,
@@ -113,7 +121,6 @@ module tb_run_problem;
     );
         pack_node_cfg = '0;
         pack_node_cfg[INIT_VALID_MSB:INIT_VALID_LSB] = 1'b1;
-        pack_node_cfg[SEED_VALID_MSB:SEED_VALID_LSB] = 1'b1;
         pack_node_cfg[CLAMP_VALID_MSB:CLAMP_VALID_LSB] = 1'b1;
         pack_node_cfg[BIAS_VALID_MSB:BIAS_VALID_LSB] = 1'b1;
         pack_node_cfg[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB] = init_spin;
@@ -125,17 +132,23 @@ module tb_run_problem;
 
     function automatic logic [31:0] pack_node_cmd(
         input logic apply_cfg,
-        input logic load_cfg,
-        input logic clear_scope_en,
+        input logic apply_seed,
+        input logic load_node,
+        input logic clear_cfg_scope_en,
+        input logic clear_seed_scope_en,
         input logic clear_local_all,
-        input logic readback_node
+        input logic readback_cfg,
+        input logic readback_seed
     );
         pack_node_cmd = '0;
         pack_node_cmd[APPLY_CFG_MSB:APPLY_CFG_LSB] = apply_cfg;
-        pack_node_cmd[LOAD_CFG_MSB:LOAD_CFG_LSB] = load_cfg;
-        pack_node_cmd[CLEAR_SCOPE_EN_MSB:CLEAR_SCOPE_EN_LSB] = clear_scope_en;
+        pack_node_cmd[APPLY_SEED_MSB:APPLY_SEED_LSB] = apply_seed;
+        pack_node_cmd[LOAD_NODE_MSB:LOAD_NODE_LSB] = load_node;
+        pack_node_cmd[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB] = clear_cfg_scope_en;
+        pack_node_cmd[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB] = clear_seed_scope_en;
         pack_node_cmd[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB] = clear_local_all;
-        pack_node_cmd[READBACK_NODE_MSB:READBACK_NODE_LSB] = readback_node;
+        pack_node_cmd[READBACK_CFG_MSB:READBACK_CFG_LSB] = readback_cfg;
+        pack_node_cmd[READBACK_SEED_MSB:READBACK_SEED_LSB] = readback_seed;
     endfunction
 
     function automatic logic [31:0] pack_edge_target(
@@ -181,8 +194,9 @@ module tb_run_problem;
 
     function automatic logic [31:0] pack_interval_word(input int unsigned base_idx);
         pack_interval_word = '0;
-        pack_interval_word[SWEEP_INTERVAL0_MSB:SWEEP_INTERVAL0_LSB] = problem_sweep_interval[base_idx + 0];
-        pack_interval_word[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB] = problem_sweep_interval[base_idx + 1];
+        // Shared-LFSR/LUT phase controller stores intervals as actual value minus one.
+        pack_interval_word[SWEEP_INTERVAL0_MSB:SWEEP_INTERVAL0_LSB] = problem_sweep_interval[base_idx + 0] - 1'b1;
+        pack_interval_word[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB] = problem_sweep_interval[base_idx + 1] - 1'b1;
     endfunction
 
     task automatic report_mismatch(
@@ -310,7 +324,7 @@ module tb_run_problem;
         logic [31:0] rdata;
         logic [31:0] expected_global_cfg;
         begin
-            expected_global_cfg = pack_global_cfg(PROBLEM_NUM_SWEEPS, PROBLEM_NUM_MAJORITY);
+            expected_global_cfg = pack_global_cfg_actual(PROBLEM_NUM_SWEEPS, PROBLEM_NUM_MAJORITY);
             write_reg(A_GLOBAL_CFG, expected_global_cfg, "global cfg");
 
             for (int reg_idx = 0; reg_idx < (PROBLEM_NUM_I0_LEVELS / 4); reg_idx++) begin
@@ -337,9 +351,24 @@ module tb_run_problem;
                                     problem_node_bias_sign[idx],
                                     problem_node_bias_prob[idx]),
                       "node cfg");
-            write_reg(A_NODE_SEED, problem_node_seed[run_idx][idx], "node seed");
-            write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0), "node apply");
+            write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
             repeat (1) @(posedge clk);
+        end
+    endtask
+
+    task automatic configure_tile_seeds(input int unsigned run_idx);
+        int unsigned tile_idx;
+        for (int seed_row = 0; seed_row < PROBLEM_SEED_ROWS; seed_row++) begin
+            for (int seed_col = 0; seed_col < PROBLEM_SEED_COLS; seed_col++) begin
+                tile_idx = (seed_row * PROBLEM_SEED_COLS) + seed_col;
+                write_reg(A_NODE_TARGET,
+                          pack_node_target(TARGET_MODE_LOCAL, seed_row[5:0], seed_col[5:0]),
+                          "tile seed target");
+                write_reg(A_NODE_SEED, problem_tile_seed[run_idx][tile_idx], "tile seed");
+                // Shared-LFSR/LUT RTL applies seeds per 2x2 tile, not per physical p-bit.
+                write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "tile seed apply");
+                repeat (1) @(posedge clk);
+            end
         end
     endtask
 
@@ -537,9 +566,9 @@ module tb_run_problem;
         $display("[RUN_PROBLEM] kind=%0d logical=%0d physical=%0d config_edges=%0d clear_edges=%0d",
                  PROBLEM_KIND, PROBLEM_NUM_LOGICAL, PROBLEM_NUM_PHYSICAL,
                  PROBLEM_NUM_CONFIG_EDGES, PROBLEM_NUM_CLEAR_EDGES);
-        $display("[RUN_PROBLEM] runs=%0d sweeps=%0d majority=%0d min_pass_score=%0d snapshot_pages=%0d",
+        $display("[RUN_PROBLEM] runs=%0d sweeps=%0d majority=%0d min_pass_score=%0d snapshot_pages=%0d tile_seeds=%0d",
                  PROBLEM_NUM_SEED_RUNS, PROBLEM_NUM_SWEEPS, PROBLEM_NUM_MAJORITY,
-                 PROBLEM_MIN_PASS_SCORE, PROBLEM_SNAPSHOT_PAGES);
+                 PROBLEM_MIN_PASS_SCORE, PROBLEM_SNAPSHOT_PAGES, PROBLEM_NUM_TILE_SEEDS);
 
         problem_score_all_runs_init();
 
@@ -548,6 +577,7 @@ module tb_run_problem;
             hard_reset();
             configure_run_registers();
             configure_nodes(run_idx);
+            configure_tile_seeds(run_idx);
             clear_edges();
             configure_edges();
             start_run_and_wait_done(run_idx);

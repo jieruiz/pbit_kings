@@ -25,7 +25,7 @@
       "mode": "linear",
       "start": 0.2,
       "end": 6.0,
-      "table": "../../../../anneal_i0_64final_dec.csv"
+      "table": "../inputs/common/anneal_i0_64final_dec.txt"
     }
   },
   "pass": {

@@ -96,13 +96,16 @@ def build_native_king_problem(spec_path, spec):
         logical_edge_signs.append(1)
 
     num_runs = int(run.get("num_runs", 1))
-    node_seeds, init_spins, global_seeds = gp.build_maxcut_node_data(
+    seed_rows = (rows + 1) // 2
+    seed_cols = (rtl_cols + 1) // 2
+    tile_seeds, init_spins, global_seeds = gp.build_maxcut_node_data(
         physical_nodes,
         num_runs,
         int(run.get("seed_master_start", run.get("seed_master", 24680))),
         int(run.get("seed_master_step", 1)),
         int(run.get("run_seed", 0)),
-        cols,
+        seed_rows,
+        seed_cols,
     )
     i0_levels = gp.build_i0_levels(run, spec_path)
     num_sweeps, intervals = gp.build_intervals(run, len(i0_levels))
@@ -120,11 +123,15 @@ def build_native_king_problem(spec_path, spec):
         "lits_per_clause": 0,
         "kings_rows": rows,
         "kings_cols": cols,
+        "rtl_rows": rows,
+        "rtl_cols": rtl_cols,
+        "seed_rows": seed_rows,
+        "seed_cols": seed_cols,
         "physical_nodes": physical_nodes,
         "phys_to_idx": phys_to_idx,
         "config_edges": config_edges,
         "clear_edges": clear_edges,
-        "node_seeds": node_seeds,
+        "tile_seeds": tile_seeds,
         "init_spins": init_spins,
         "global_seeds": global_seeds,
         "bias_prob": [0 for _ in physical_nodes],
@@ -175,11 +182,12 @@ def main():
     print("generated {}".format(out_dir / "problem_score.svh"))
     print("generated {}".format(args.filelist))
     print(
-        "problem={name} kind=native_king_maxcut logical={logical} physical={physical} "
+        "problem={name} kind=native_king_maxcut logical={logical} physical={physical} tile_seeds={tile_seeds} "
         "config_edges={config_edges} clear_edges={clear_edges} sweeps={sweeps} runs={runs}".format(
             name=problem["name"],
             logical=problem["num_logical"],
             physical=len(problem["physical_nodes"]),
+            tile_seeds=problem["seed_rows"] * problem["seed_cols"],
             config_edges=len(problem["config_edges"]),
             clear_edges=len(problem["clear_edges"]),
             sweeps=problem["num_sweeps"],

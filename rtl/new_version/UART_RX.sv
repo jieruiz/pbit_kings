@@ -89,7 +89,7 @@ module uart_rx_8n1 (
                         clk_cnt_q + 32'd1;
     assign clk_cnt_en = (state_q != S_IDLE);
 
-    assign bit_cnt_d = (state_d == S_IDLE)? 3'd0 :
+    assign bit_cnt_d = (stateq_q == S_IDLE)? 3'd0 :
                        ((state_q == S_DATA) && (clk_cnt_q == (CLKS_PER_BIT - 1)))? bit_cnt_q + 3'd1 : // 3'd7 + 1 = 0
                         bit_cnt_q;
 

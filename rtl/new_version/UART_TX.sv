@@ -76,7 +76,7 @@ module uart_tx_8n1 (
 
     assign tx_d = (state_d == S_IDLE)? 1'b1 :
                   (state_d == S_START)? 1'b0 :
-                  (state_d == S_DATA)? tx_shift_q[bit_cnt_q] :
+                  (state_d == S_DATA)? tx_shift_q[bit_cnt_d] :
                   (state_d == S_STOP)? 1'b1 : tx_q;
     assign tx_o = tx_q;
 

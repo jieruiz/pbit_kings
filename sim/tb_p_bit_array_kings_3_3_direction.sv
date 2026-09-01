@@ -446,7 +446,7 @@ module tb_pbit_array_kings_3x3_direction;
 
             // E edge, prob=F, sign=1 means J=+1.
             // Neighbor spin is +1, contribution=+1, h_i=-1.
-            // i0_level=15 => p_up¡Ö0, center remains 0.
+            // i0_level=15 => p_upâ‰ˆ0, center remains 0.
             cfg_center_edge_by_dir(DIR_E, 4'hF, 1'b1, 1'b1);
 
             check_spin(1, 1, 1'b0);

@@ -34,9 +34,6 @@ module pbit_node (
     input  logic                                 local_cfg_clr_all_pulse_i ,
     input  logic [NODE_CFG_PACKED_WIDTH-1:0]     local_node_cfg_i          ,
 
-
-    output logic [NODE_CFG_W-1:0]                local_node_rcfg_o,
-
     input logic                                  cfg_node_load_i,
 
     // ------------------------------------------------------------
@@ -222,7 +219,6 @@ module pbit_node (
     assign local_cfg_vld_d = local_cfg_node_we_i? 1'b1:
                              local_cfg_clr_pulse_i | local_cfg_clr_all_pulse_i? 1'b0:
                              local_cfg_vld_q;
-    assign local_node_rcfg_o = {bias_prob_q, bias_sign_q, clamp_spin_q, clamp_en_q, spin_q};
 
     dffsr #(.WIDTH(NODE_CFG_CLAMP_EN_WIDTH)
     ) clamp_en_ff (

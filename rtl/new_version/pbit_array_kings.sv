@@ -45,7 +45,6 @@ module pbit_array_kings (
     input  logic                                 local_node_cfg_clr_pulse_i,
     input  logic                                 local_node_seed_we_pulse_i,
     input  logic                                 local_node_seed_clr_pulse_i,
-    input  logic [TARGET_MODE_WIDTH-1:0]         node_target_mode_i,
     input  logic [NODE_TARGET_ROW_WIDTH-1:0]     node_row_i,
     input  logic [NODE_TARGET_COL_WIDTH-1:0]     node_col_i,
     input  logic [NODE_CFG_PACKED_WIDTH-1:0]     local_node_cfg_i,
@@ -72,15 +71,6 @@ module pbit_array_kings (
     input  logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0]  cfg_edge_sign_i,
     input  logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] cfg_edge_valid_i,
 
-    //Node readback IO 
-    input  logic                                 node_rdata_cfg_pulse_i,
-    input  logic                                 node_rdata_seed_pulse_i,
-    output logic [NODE_CFG_W-1:0]                node_rdata_cfg_o,
-    output logic [NODE_SEED_WIDTH-1:0]           node_rdata_seed_o,
- 
-    //Edge readback IO 
-    input  logic                                 edge_rdata_pulse_i,
-    output logic [EDGE_RDATA_PACKED_WIDTH-1:0]   edge_rdata_cfg_o,
     // ------------------------------------------------------------
     // Status
     // ------------------------------------------------------------
@@ -149,26 +139,6 @@ module pbit_array_kings (
     logic spin [ROWS][COLS];
     logic [N_SPIN-1:0] spin_flat;
     logic [SNAPSHOT_WIDTH-1:0] spin_flat_reshape[SPIN_ADDR_MAX];
-
-    // ------------------------------------------------------------
-    // Node readback
-    // ------------------------------------------------------------
-    logic [NODE_CFG_W-1:0] local_node_rcfg_w[ROWS][COLS];
-    logic [NODE_SEED_WIDTH-1:0] local_node_rseed_w[SEED_ROWS][SEED_COLS];
-    logic [NODE_CFG_W-1:0] node_rdata_cfg_q, node_rdata_cfg_d;
-    logic node_rdata_cfg_en;
-    logic [NODE_SEED_WIDTH-1:0] node_rdata_seed_q, node_rdata_seed_d;
-    logic node_rdata_seed_en;
-
-    assign node_rdata_cfg_o = node_rdata_cfg_q;
-    assign node_rdata_seed_o = node_rdata_seed_q;
-    // ------------------------------------------------------------
-    // Edge readback
-    // ------------------------------------------------------------
-    logic [EDGE_RDATA_PACKED_WIDTH-1:0] edge_rdata_cfg_q, edge_rdata_cfg_d;
-    logic edge_rdata_cfg_en;
-
-    assign edge_rdata_cfg_o = edge_rdata_cfg_q;
 
     // ------------------------------------------------------------
     // Directional wires into each p-bit
@@ -377,8 +347,6 @@ module pbit_array_kings (
                     .local_cfg_clr_pulse_i      (local_node_cfg_clr_pulse_match_w),
                     .local_cfg_clr_all_pulse_i  (clr_local_all_pulse_i),
                     .local_node_cfg_i           (local_node_cfg_i),
-
-                    .local_node_rcfg_o          (local_node_rcfg_w[r][c]),
 
                     .cfg_node_load_i            (node_load_pulse_i),
     
@@ -727,98 +695,6 @@ module pbit_array_kings (
         .q_o(snapshot_vld_q)
     );
 
-    // ------------------------------------------------------------
-    // Node readback
-    // ------------------------------------------------------------
-    generate
-        for(r = 0; r < SEED_ROWS; r++) begin : GEN_NODE_SEED_RDATA_ROW
-            for(c = 0; c < SEED_COLS; c++) begin : GEN_NODE_SEED_RDATA_COL
-                assign local_node_rseed_w[r][c] = lfsr_rnd_32_w[r][c];
-            end
-        end
-    endgenerate
-
-    always @(*) begin
-        case(node_target_mode_i)
-            TARGET_MODE_GLOBAL: begin
-                node_rdata_cfg_d  = global_node_cfg_i;
-                node_rdata_seed_d = global_node_seed_i;
-            end
-            TARGET_MODE_ROW: begin
-                if(node_row_i < ROWS)
-                    node_rdata_cfg_d  = row_node_cfg_i[node_row_i];
-                else node_rdata_cfg_d = {NODE_CFG_W{1'b0}};
-                if(node_row_i < SEED_ROWS)
-                    node_rdata_seed_d = row_node_seed_i[node_row_i];
-                else node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
-            end
-            TARGET_MODE_LOCAL: begin
-                if(node_row_i < ROWS && node_col_i < COLS)
-                    node_rdata_cfg_d  = local_node_rcfg_w[node_row_i][node_col_i];
-                else node_rdata_cfg_d = {NODE_CFG_W{1'b0}};
-                if(node_row_i < SEED_ROWS && node_col_i < SEED_COLS)
-                    node_rdata_seed_d = local_node_rseed_w[node_row_i][node_col_i];
-                else node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
-            end
-            default: begin
-                node_rdata_cfg_d  = {NODE_CFG_W{1'b0}};
-                node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
-            end
-        endcase
-    end
-
-    assign node_rdata_cfg_en  = node_rdata_cfg_pulse_i;
-    assign node_rdata_seed_en = node_rdata_seed_pulse_i;
-
-    dffe #(.WIDTH(NODE_CFG_W)
-    ) node_rdata_cfg_ff (
-        .clk(clk),
-        .en_i(node_rdata_cfg_en),
-        .d_i(node_rdata_cfg_d),
-        .q_o(node_rdata_cfg_q)
-    );
-
-    dffe #(.WIDTH(NODE_SEED_WIDTH)
-    ) node_rdata_seed_ff (
-        .clk(clk),
-        .en_i(node_rdata_seed_en),
-        .d_i(node_rdata_seed_d),
-        .q_o(node_rdata_seed_q)
-    );
-
-    // ------------------------------------------------------------
-    // Edge readback
-    // ------------------------------------------------------------
-    always @(*) begin
-        if(cfg_edge_row_i < ROWS && cfg_edge_col_i < COLS)
-            case(cfg_edge_type_i)
-                EDGE_TYPE_EDGE_H: begin
-                    edge_rdata_cfg_d = {prob_e[cfg_edge_row_i][cfg_edge_col_i], sign_e[cfg_edge_row_i][cfg_edge_col_i], valid_e[cfg_edge_row_i][cfg_edge_col_i]};
-                end
-                EDGE_TYPE_EDGE_V: begin
-                    edge_rdata_cfg_d = {prob_s[cfg_edge_row_i][cfg_edge_col_i], sign_s[cfg_edge_row_i][cfg_edge_col_i], valid_s[cfg_edge_row_i][cfg_edge_col_i]};
-                end
-                EDGE_TYPE_EDGE_DSE: begin
-                    edge_rdata_cfg_d = {prob_se[cfg_edge_row_i][cfg_edge_col_i], sign_se[cfg_edge_row_i][cfg_edge_col_i], valid_se[cfg_edge_row_i][cfg_edge_col_i]};
-                end
-                EDGE_TYPE_EDGE_DSW: begin
-                    edge_rdata_cfg_d = {prob_sw[cfg_edge_row_i][cfg_edge_col_i], sign_sw[cfg_edge_row_i][cfg_edge_col_i], valid_sw[cfg_edge_row_i][cfg_edge_col_i]};
-                end
-                default: begin
-                    edge_rdata_cfg_d = {EDGE_RDATA_PACKED_WIDTH{1'b0}};
-                end
-            endcase
-        else edge_rdata_cfg_d = {EDGE_RDATA_PACKED_WIDTH{1'b0}};
-    end
-    assign edge_rdata_cfg_en = edge_rdata_pulse_i;
-
-    dffe #(.WIDTH(EDGE_RDATA_PACKED_WIDTH)
-    ) edge_rdata_cfg_ff (
-        .clk(clk),
-        .en_i(edge_rdata_cfg_en),
-        .d_i(edge_rdata_cfg_d),
-        .q_o(edge_rdata_cfg_q)
-    );
     // ------------------------------------------------------------
     // Done signal counter
     // 2*num_majority_act+2

@@ -111,11 +111,11 @@ module tb;
     $display("status: %s\nraddr: %0h\nrdata: %0b", status.name(), raddr, rdata);
     endtask
 
-    task automatic req_global_ctrl(bit error_clear = 1'b0, bit run_done_clear = 1'b0, bit snapshot_latch = 1'b0, 
+    task automatic req_global_ctrl(bit run_done_clear = 1'b0, bit snapshot_latch = 1'b0, 
                          bit run_start = 1'b0, bit cfg_done_clear = 1'b0, bit cfg_done_set = 1'b0, bit soft_reset = 1'b0);
         op = OP_WRITE;
         waddr = A_GLOBAL_CTRL;
-        wdata = {{(32-ERROR_CLEAR_MSB-1){1'b0}}, error_clear, run_done_clear, snapshot_latch,
+        wdata = {{(32-RUN_DONE_CLEAR_MSB-1){1'b0}}, run_done_clear, snapshot_latch,
                  run_start, cfg_done_clear, cfg_done_set, soft_reset};
         $display("req_global_ctrl send at %0t", $time());
         req_send(op, waddr, wdata, status, raddr, rdata);
@@ -144,47 +144,6 @@ module tb;
         $display("ERROR: 'b%0b\nSNAPSHOT_VALID: 'b%0b\nEDGE_CMD_DONE: 'b%0b\nNODE_CMD_DONE: 'b%0b\nRUN_DONE: 'b%0b\nRUN_BUSY: 'b%0b\nCFG_DONE: 'b%0b",
                  rdata[ERROR_MSB:ERROR_LSB], rdata[SNAPSHOT_VALID_MSB:SNAPSHOT_VALID_LSB], rdata[EDGE_CMD_DONE_MSB:EDGE_CMD_DONE_LSB],
                  rdata[NODE_CMD_DONE_MSB:NODE_CMD_DONE_LSB], rdata[RUN_DONE_MSB:RUN_DONE_LSB], rdata[RUN_BUSY_MSB:RUN_BUSY_LSB], rdata[CFG_DONE_MSB:CFG_DONE_LSB]);
-    endtask
-
-    task automatic req_array_param();
-        op = OP_READ;
-        waddr = A_ARRAY_PARAM;
-        wdata = 'd0;
-        $display("req_array_param send at %0t", $time());
-        req_send(op, waddr, wdata, status, raddr, rdata);
-        $display("req end at %0t", $time());
-        $display("ROWS: 'd%0d\nCOLS: 'd%0d\nN_SPIN: 'd%0d", rdata[N_SPIN_MSB:N_SPIN_LSB], rdata[COLS_MSB:COLS_LSB], rdata[ROWS_MSB:ROWS_LSB]);
-    endtask
-
-    task automatic req_error_status(bit[7:0] op_e = OP_READ,
-                                    bit snap_addr_oor = 1'b0, bit uart_overflow = 1'b0, bit uart_frame_err = 1'b0, bit edge_type_err = 1'b0,
-                                    bit edge_col_oor = 1'b0, bit edge_row_oor = 1'b0, bit seed_col_oor = 1'b0, bit seed_row_oor = 1'b0,
-                                    bit node_col_oor = 1'b0, bit node_row_orr = 1'b0, bit node_target_mode_err = 1'b0, bit run_when_busy = 1'b0,
-                                    bit run_without_cfg_done = 1'b0, bit edge_cfg_while_run = 1'b0, bit node_cfg_while_run = 1'b0, bit rd_to_wo = 1'b0, bit wr_to_ro = 1'b0, bit addr_err = 1'b0);
-        op = op_e;
-        waddr = A_ERROR_STATUS;
-        wdata = {{(32-SNAP_ADDR_OOR_MSB-1){1'b0}}, {snap_addr_oor, uart_overflow, uart_frame_err, edge_type_err,
-                                                    edge_col_oor, edge_row_oor, seed_col_oor, seed_row_oor, node_col_oor, node_row_orr,
-                                                    node_target_mode_err, run_when_busy, run_without_cfg_done, edge_cfg_while_run,
-                                                    node_cfg_while_run, rd_to_wo, wr_to_ro, addr_err}};
-        $display("req_error_status send at %0t", $time());
-        req_send(op, waddr, wdata, status, raddr, rdata);
-        $display("req end at %0t", $time());
-        if(op_e == OP_READ) begin
-            //$display({"SNAP_ADDR_OOR: 'b%0b UART_OVERFLOW: 'b%0b UART_FRAME_ERR: 'b%0b EDGE_TYPE_ERR: 'b%0b\n",
-            //          "EDGE_COL_OOR: 'b%0b EDGE_ROW_OOR: 'b%0b NODE_COL_OOR: 'b%0b NODE_ROW_OOR: 'b%0b\n",
-            //          "NODE_TARGET_MODE_ERR: 'b%0b RUN_WHEN_BUSY: 'b%0b RUN_WITHOUT_CFG_DONE: 'b%0b EDGE_CFG_WHILE_RUN: 'b%0b\n",
-            //          "NODE_CFG_WHILE_RUN: 'b%0b RD_TO_WO: 'b%0b WR_TO_RO: 'b%0b ADDR_ERR: 'b%0b"},
-            //          rdata[SNAP_ADDR_OOR_MSB:SNAP_ADDR_OOR_LSB], rdata[UART_OVERFLOW_MSB:UART_OVERFLOW_LSB], rdata[UART_FRAME_ERR_MSB:UART_FRAME_ERR_LSB], rdata[EDGE_TYPE_ERR_MSB:EDGE_TYPE_ERR_LSB],
-            //          rdata[EDGE_COL_OOR_MSB:EDGE_COL_OOR_LSB], rdata[EDGE_ROW_OOR_MSB:EDGE_ROW_OOR_LSB], rdata[NODE_COL_OOR_MSB:NODE_COL_OOR_LSB], rdata[NODE_ROW_OOR_MSB:NODE_ROW_OOR_LSB],
-            //          rdata[NODE_TARGET_MODE_ERR_MSB:NODE_TARGET_MODE_ERR_LSB], rdata[RUN_WHEN_BUSY_MSB:RUN_WHEN_BUSY_LSB], rdata[RUN_WITHOUT_CFG_DONE_MSB:RUN_WITHOUT_CFG_DONE_LSB], rdata[EDGE_CFG_WHILE_RUN_MSB:EDGE_CFG_WHILE_RUN_LSB],
-            //          rdata[NODE_CFG_WHILE_RUN_MSB:NODE_CFG_WHILE_RUN_LSB], rdata[RD_TO_WO_MSB:RD_TO_WO_LSB], rdata[WR_TO_RO_MSB:WR_TO_RO_LSB], rdata[ADDR_ERR_MSB:ADDR_ERR_LSB]);
-            $display("SNAP_ADDR_OOR: 'b%0b UART_OVERFLOW: 'b%0b UART_FRAME_ERR: 'b%0b EDGE_TYPE_ERR: 'b%0b\nEDGE_COL_OOR: 'b%0b EDGE_ROW_OOR: 'b%0b NODE_COL_OOR: 'b%0b NODE_ROW_OOR: 'b%0b\nNODE_TARGET_MODE_ERR: 'b%0b RUN_WHEN_BUSY: 'b%0b RUN_WITHOUT_CFG_DONE: 'b%0b EDGE_CFG_WHILE_RUN: 'b%0b\nNODE_CFG_WHILE_RUN: 'b%0b RD_TO_WO: 'b%0b WR_TO_RO: 'b%0b ADDR_ERR: 'b%0b",
-                      rdata[SNAP_ADDR_OOR_MSB:SNAP_ADDR_OOR_LSB], rdata[UART_OVERFLOW_MSB:UART_OVERFLOW_LSB], rdata[UART_FRAME_ERR_MSB:UART_FRAME_ERR_LSB], rdata[EDGE_TYPE_ERR_MSB:EDGE_TYPE_ERR_LSB],
-                      rdata[EDGE_COL_OOR_MSB:EDGE_COL_OOR_LSB], rdata[EDGE_ROW_OOR_MSB:EDGE_ROW_OOR_LSB], rdata[SEED_COL_OOR_MSB:SEED_COL_OOR_LSB], rdata[SEED_ROW_OOR_MSB:SEED_ROW_OOR_LSB], rdata[NODE_COL_OOR_MSB:NODE_COL_OOR_LSB], rdata[NODE_ROW_OOR_MSB:NODE_ROW_OOR_LSB],
-                      rdata[NODE_TARGET_MODE_ERR_MSB:NODE_TARGET_MODE_ERR_LSB], rdata[RUN_WHEN_BUSY_MSB:RUN_WHEN_BUSY_LSB], rdata[RUN_WITHOUT_CFG_DONE_MSB:RUN_WITHOUT_CFG_DONE_LSB], rdata[EDGE_CFG_WHILE_RUN_MSB:EDGE_CFG_WHILE_RUN_LSB],
-                      rdata[NODE_CFG_WHILE_RUN_MSB:NODE_CFG_WHILE_RUN_LSB], rdata[RD_TO_WO_MSB:RD_TO_WO_LSB], rdata[WR_TO_RO_MSB:WR_TO_RO_LSB], rdata[ADDR_ERR_MSB:ADDR_ERR_LSB]);
-        end
     endtask
 
     task automatic req_snapshot_addr(bit[7:0] op_e = OP_READ, bit[2:0] snapshot_addr = 1'b0);
@@ -316,36 +275,13 @@ module tb;
         end
     endtask
 
-    task automatic req_node_cmd(bit readback_seed = 'd0, bit readback_cfg = 'd0, bit clear_local_all = 'd0, bit clear_seed_scope_en = 'd0, bit clear_cfg_scope_en = 'd0, bit load_node = 'd0, bit apply_seed = 'd0, bit apply_cfg = 'd0);
+    task automatic req_node_cmd(bit clear_local_all = 'd0, bit clear_seed_scope_en = 'd0, bit clear_cfg_scope_en = 'd0, bit load_node = 'd0, bit apply_seed = 'd0, bit apply_cfg = 'd0);
         op = OP_WRITE;
         waddr = A_NODE_CMD;
-        wdata = {{(32-READBACK_SEED_MSB-1){1'b0}}, readback_seed, readback_cfg, clear_local_all, clear_seed_scope_en, clear_cfg_scope_en, load_node, apply_seed, apply_cfg};
+        wdata = {{(32-CLEAR_LOCAL_ALL_MSB-1){1'b0}}, clear_local_all, clear_seed_scope_en, clear_cfg_scope_en, load_node, apply_seed, apply_cfg};
         $display("req_node_cmd send at %0t", $time());
         req_send(op, waddr, wdata, status, raddr, rdata);
         $display("req end at %0t", $time());
-    endtask
-
-    task automatic req_node_rdata_cfg();
-        op = OP_READ;
-        waddr = A_NODE_RDATA_CFG;
-        wdata = 'd0;
-        $display("req_node_rdata_cfg send at %0t", $time());
-        req_send(op, waddr, wdata, status, raddr, rdata);
-        $display("req end at %0t", $time());
-        $display("BIAS_PROB: 'd%0d\nBIAS_SIGN: 'b%0b\nCLAMP_SPIN: 'b%0b\nCLAMP_EN: 'b%0b\nINIT_SPIN: 'b%0b",
-                  rdata[NODE_RDATA_CFG_BIAS_PROB_MSB:NODE_RDATA_CFG_BIAS_PROB_LSB], rdata[NODE_RDATA_CFG_BIAS_SIGN_MSB:NODE_RDATA_CFG_BIAS_SIGN_LSB],
-                  rdata[NODE_RDATA_CFG_CLAMP_SPIN_MSB:NODE_RDATA_CFG_CLAMP_SPIN_LSB], rdata[NODE_RDATA_CFG_CLAMP_EN_MSB:NODE_RDATA_CFG_CLAMP_EN_LSB],
-                  rdata[NODE_RDATA_CFG_INIT_SPIN_MSB:NODE_RDATA_CFG_INIT_SPIN_LSB]);
-    endtask
-
-    task automatic req_node_rdata_seed();
-        op = OP_READ;
-        waddr = A_NODE_RDATA_SEED;
-        wdata = 'd0;
-        $display("req_node_rdata_seed send at %0t", $time());
-        req_send(op, waddr, wdata, status, raddr, rdata);
-        $display("req end at %0t", $time());
-        $display("NODE_RDATA_SEED: 'h%0h", rdata[NODE_RDATA_SEED_MSB:NODE_RDATA_SEED_LSB]);
     endtask
 
     task automatic req_edge_target(bit[7:0] op_e = OP_READ, bit[EDGE_TARGET_COL_WIDTH-1:0] col = 'd0, bit[EDGE_TARGET_ROW_WIDTH-1:0] row = 'd0,
@@ -374,24 +310,13 @@ module tb;
         end
     endtask
 
-    task automatic req_edge_cmd(bit readback_edge = 'd0, bit clear_edge = 'd0, bit apply_edge = 'd0);
+    task automatic req_edge_cmd(bit clear_edge = 'd0, bit apply_edge = 'd0);
         op = OP_WRITE;
         waddr = A_EDGE_CMD;
-        wdata = {{(32-READBACK_EDGE_MSB-1){1'b0}}, readback_edge, clear_edge, apply_edge};
+        wdata = {{(32-CLEAR_EDGE_MSB-1){1'b0}}, clear_edge, apply_edge};
         $display("req_edge_cmd send at %0t", $time());
         req_send(op, waddr, wdata, status, raddr, rdata);
         $display("req end at %0t", $time());
-    endtask
-
-    task automatic req_edge_rdata();
-        op = OP_READ;
-        waddr = A_EDGE_RDATA;
-        wdata = 'd0;
-        $display("req_edge_rdata send at %0t", $time());
-        req_send(op, waddr, wdata, status, raddr, rdata);
-        $display("req end at %0t", $time());
-        $display("EDGE_PROB: 'd%0d\nEDGE_SIGN: 'b%0b\nEDGE_VALID: 'b%0b", rdata[EDGE_RDATA_EDGE_PROB_MSB:EDGE_RDATA_EDGE_PROB_LSB],
-                 rdata[EDGE_RDATA_EDGE_SIGN_MSB:EDGE_RDATA_EDGE_SIGN_LSB], rdata[EDGE_RDATA_EDGE_VALID_MSB:EDGE_RDATA_EDGE_VALID_LSB]);
     endtask
 
     task automatic req_spin_data(bit[$clog2(SPIN_RDATA_REG_NUM)-1:0] idx = 'd0);
@@ -500,10 +425,6 @@ module tb;
             .apply_cfg(1)
         );
 
-        req_node_cmd(
-            .readback_cfg(1)
-        );
-
         req_node_seed(
             .op_e(OP_WRITE),
             .node_seed(32'h12345678)
@@ -512,13 +433,6 @@ module tb;
         req_node_cmd(
             .apply_seed(1)
         );
-
-        req_node_cmd(
-            .readback_seed(1)
-        );
-
-        req_node_rdata_cfg();
-        req_node_rdata_seed();
 
         //row
         for(int i = 0; i < ROWS; i++) begin
@@ -544,12 +458,6 @@ module tb;
             req_node_cmd(
                 .apply_cfg(1)
             );
-
-            req_node_cmd(
-                .readback_cfg(1)
-            );
-
-            req_node_rdata_cfg();
         end
 
         for(int i = 0; i < SEED_ROWS; i++) begin
@@ -568,12 +476,6 @@ module tb;
             req_node_cmd(
                 .apply_seed(1)
             );
-
-            req_node_cmd(
-                .readback_seed(1)
-            );
-
-            req_node_rdata_seed();
         end
         
         //edge
@@ -597,12 +499,6 @@ module tb;
                     req_edge_cmd(
                         .apply_edge(1)
                     );
-
-                    req_edge_cmd(
-                        .readback_edge(1)
-                    );
-
-                    req_edge_rdata();
                 end
 
                 if(i != ROWS-1) begin
@@ -622,13 +518,7 @@ module tb;
 
                     req_edge_cmd(
                         .apply_edge(1)
-                    );
-
-                    req_edge_cmd(
-                        .readback_edge(1)
-                    );
-
-                    req_edge_rdata();                
+                    );         
                 end
 
                 if((i != ROWS-1) & (j != COLS-1)) begin
@@ -648,13 +538,7 @@ module tb;
 
                     req_edge_cmd(
                         .apply_edge(1)
-                    );
-
-                    req_edge_cmd(
-                        .readback_edge(1)
-                    );
-
-                    req_edge_rdata();                
+                    );              
                 end
 
                 if((i != ROWS-1) & (j != 0)) begin
@@ -674,13 +558,7 @@ module tb;
 
                     req_edge_cmd(
                         .apply_edge(1)
-                    );
-
-                    req_edge_cmd(
-                        .readback_edge(1)
-                    );
-
-                    req_edge_rdata();                
+                    );            
                 end
             end
         end

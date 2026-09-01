@@ -56,7 +56,6 @@ module pbit_uart_reg_subsystem (
     output logic                                   local_node_cfg_clr_pulse_o,
     output logic                                   local_node_seed_we_pulse_o,
     output logic                                   local_node_seed_clr_pulse_o,
-    output logic [TARGET_MODE_WIDTH-1:0]           node_target_mode_o,
     output logic [NODE_TARGET_ROW_WIDTH-1:0]       node_row_o,
     output logic [NODE_TARGET_COL_WIDTH-1:0]       node_col_o,
     output logic [NODE_CFG_PACKED_WIDTH-1:0]       local_node_cfg_o,
@@ -73,18 +72,7 @@ module pbit_uart_reg_subsystem (
     output logic [EDGE_TARGET_COL_WIDTH-1:0]       cfg_edge_col_o,
     output logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0]    cfg_edge_prob_o,
     output logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0]    cfg_edge_sign_o,
-    output logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0]   cfg_edge_valid_o,
-   
-    //Node readback IO   
-    input  logic [NODE_CFG_W-1:0]                  node_rdata_cfg_i,
-    input  logic [NODE_SEED_WIDTH-1:0]             node_rdata_seed_i,
-    output logic                                   node_rdata_cfg_pulse_o,
-    output logic                                   node_rdata_seed_pulse_o,
-   
-    //Edge readback IO   
-    input  logic [EDGE_RDATA_PACKED_WIDTH-1:0]     edge_rdata_cfg_i,
-    output logic                                   edge_rdata_pulse_o
-  
+    output logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0]   cfg_edge_valid_o
 );  
 
     logic        reg_wr_en_w;
@@ -93,9 +81,6 @@ module pbit_uart_reg_subsystem (
     logic [31:0] reg_wdata_w;
     logic [31:0] reg_rdata_w;
     logic        reg_access_error_w;
-
-    logic        uart_frame_err_pulse_w;
-    logic        uart_overflow_pulse_w;
 
     pbit_uart_reg_master u_pbit_uart_reg_master (
         .clk                      (clk),
@@ -111,8 +96,8 @@ module pbit_uart_reg_subsystem (
         .reg_rdata_i              (reg_rdata_w),
         .reg_access_error_i       (reg_access_error_w),
 
-        .uart_frame_err_pulse_o   (uart_frame_err_pulse_w),
-        .uart_overflow_pulse_o    (uart_overflow_pulse_w),
+        .uart_frame_err_pulse_o   (),
+        .uart_overflow_pulse_o    (),
 
         .uart_rx_busy_o           (uart_rx_busy_o),
         .uart_tx_busy_o           (uart_tx_busy_o)
@@ -131,9 +116,6 @@ module pbit_uart_reg_subsystem (
 
         .run_busy_i                  (run_busy_i),
         .run_done_i                  (run_done_i),
-        .uart_frame_err_pulse_i      (uart_frame_err_pulse_w),
-        .uart_overflow_pulse_i       (uart_overflow_pulse_w),
-
 
         .snapshot_flat_i             (snapshot_flat_i),
         .snapshot_vld_i              (snapshot_vld_i),
@@ -165,7 +147,6 @@ module pbit_uart_reg_subsystem (
         .local_node_cfg_clr_pulse_o  (local_node_cfg_clr_pulse_o),
         .local_node_seed_we_pulse_o  (local_node_seed_we_pulse_o),
         .local_node_seed_clr_pulse_o (local_node_seed_clr_pulse_o),
-        .node_target_mode_o          (node_target_mode_o),
         .node_row_o                  (node_row_o),
         .node_col_o                  (node_col_o),
         .local_node_cfg_o            (local_node_cfg_o),
@@ -181,15 +162,7 @@ module pbit_uart_reg_subsystem (
         .cfg_edge_col_o              (cfg_edge_col_o),
         .cfg_edge_prob_o             (cfg_edge_prob_o),
         .cfg_edge_sign_o             (cfg_edge_sign_o),
-        .cfg_edge_valid_o            (cfg_edge_valid_o),
-
-        .node_rdata_cfg_i            (node_rdata_cfg_i),
-        .node_rdata_seed_i           (node_rdata_seed_i),
-        .node_rdata_cfg_pulse_o      (node_rdata_cfg_pulse_o),
-        .node_rdata_seed_pulse_o     (node_rdata_seed_pulse_o),
-
-        .edge_rdata_cfg_i            (edge_rdata_cfg_i),
-        .edge_rdata_pulse_o          (edge_rdata_pulse_o)
+        .cfg_edge_valid_o            (cfg_edge_valid_o)
     );
 endmodule
 `endif

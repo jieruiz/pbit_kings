@@ -147,6 +147,9 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // Node spin
     // ------------------------------------------------------------
+    logic [ROWS-1:0]                     node_row_hit;
+    logic [COLS-1:0]                     node_col_hit;
+
     logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0] bias_sign_w[ROWS][COLS];
     logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_prob_w[ROWS][COLS];
     logic                                spin [ROWS][COLS];
@@ -176,6 +179,10 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // Directional wires into each p-bit
     // ------------------------------------------------------------
+    logic type_hit_h, type_hit_v, type_hit_dse, type_hit_dsw;
+    logic [ROWS-1:0] edge_row_hit;
+    logic [COLS-1:0] edge_col_hit;
+
     logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0]  prob_n  [0:ROWS-1][0:COLS-1];
     logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0]  prob_ne [0:ROWS-1][0:COLS-1];
     logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0]  prob_e  [0:ROWS-1][0:COLS-1];
@@ -348,6 +355,16 @@ module pbit_array_kings (
     // color = 2*(row%2) + (col%2)
     // ------------------------------------------------------------
     generate
+        for (r = 0; r < ROWS; r = r + 1) begin : GEN_NODE_HIT_R
+            assign node_row_hit[r] = node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0];
+        end
+
+        for (c = 0; c < COLS; c = c + 1) begin : GEN_NODE_HIT_C
+            assign node_col_hit[c] = node_col_i == c[NODE_TARGET_COL_WIDTH-1:0];
+        end
+    endgenerate
+
+    generate
         for (r = 0; r < ROWS; r = r + 1) begin : GEN_NODE_R
             for (c = 0; c < COLS; c = c + 1) begin : GEN_NODE_C
 
@@ -361,15 +378,9 @@ module pbit_array_kings (
                 assign majority_en_match_w   = majority_en_w && current_phase_i[CELL_COLOR];
                 assign majority_spin_match_w = majority_spin_w[r/2][c/2];
 
-                assign local_node_cfg_we_match_w =
-                    local_node_cfg_we_pulse_i &&
-                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
-                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
+                assign local_node_cfg_we_match_w        = local_node_cfg_we_pulse_i && node_row_hit[r] && node_col_hit[c];
 
-                assign local_node_cfg_clr_pulse_match_w =
-                    local_node_cfg_clr_pulse_i &&
-                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
-                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
+                assign local_node_cfg_clr_pulse_match_w = local_node_cfg_clr_pulse_i && node_row_hit[r] && node_col_hit[c];
 
                 pbit_node u_pbit_node (
                     .clk                        (clk),
@@ -638,15 +649,8 @@ module pbit_array_kings (
                 logic local_node_seed_we_match_w;
                 logic local_node_seed_clr_pulse_match_w;
 
-                assign local_node_seed_we_match_w =
-                    local_node_seed_we_pulse_i &&
-                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
-                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
-                
-                assign local_node_seed_clr_pulse_match_w =
-                    local_node_seed_clr_pulse_i &&
-                    (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
-                    (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
+                assign local_node_seed_we_match_w = local_node_seed_we_pulse_i && node_row_hit[r] && node_col_hit[c];
+                assign local_node_seed_clr_pulse_match_w = local_node_seed_clr_pulse_i  && node_row_hit[r] && node_col_hit[c];
 
                 lfsr32_rng32 u_lfsr32_rng32 (
                     .clk (clk),
@@ -673,6 +677,21 @@ module pbit_array_kings (
     // A=(r,c), B=(r,c+1)
     // A sees B as E, B sees A as W
     // ------------------------------------------------------------
+    assign type_hit_h   = cfg_edge_type_i == EDGE_TYPE_EDGE_H;
+    assign type_hit_v   = cfg_edge_type_i == EDGE_TYPE_EDGE_V;
+    assign type_hit_dse = cfg_edge_type_i == EDGE_TYPE_EDGE_DSE;
+    assign type_hit_dsw = cfg_edge_type_i == EDGE_TYPE_EDGE_DSW;
+
+    generate
+        for (r = 0; r < ROWS; r = r + 1) begin : GEN_EDGE_HIT_R
+            assign edge_row_hit[r] = cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0];
+        end
+
+        for (c = 0; c < COLS; c = c + 1) begin : GEN_EDGE_HIT_C
+            assign edge_col_hit[c] = cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0];
+        end
+    endgenerate
+
     generate
         for (r = 0; r < ROWS; r = r + 1) begin : GEN_H_R
             for (c = 0; c < COLS-1; c = c + 1) begin : GEN_H_C
@@ -680,17 +699,8 @@ module pbit_array_kings (
                 logic cfg_we_h_w;
                 logic cfg_clr_h_w;
 
-                assign cfg_we_h_w =
-                    cfg_edge_we_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_H) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
-
-                assign cfg_clr_h_w =
-                    cfg_edge_clr_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_H) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
+                assign cfg_we_h_w  = cfg_edge_we_pulse_i && type_hit_h && edge_row_hit[r] && edge_col_hit[c];
+                assign cfg_clr_h_w = cfg_edge_clr_pulse_i && type_hit_h && edge_row_hit[r] && edge_col_hit[c];
 
                 edge_reg_coupler u_edge_h (
                     .clk                  (clk),
@@ -731,17 +741,8 @@ module pbit_array_kings (
                 logic cfg_we_v_w;
                 logic cfg_clr_v_w;
 
-                assign cfg_we_v_w =
-                    cfg_edge_we_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_V) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
-
-                assign cfg_clr_v_w =
-                    cfg_edge_clr_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_V) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
+                assign cfg_we_v_w  = cfg_edge_we_pulse_i && type_hit_v && edge_row_hit[r] && edge_col_hit[c];
+                assign cfg_clr_v_w = cfg_edge_clr_pulse_i && type_hit_v && edge_row_hit[r] && edge_col_hit[c];
 
                 edge_reg_coupler u_edge_v (
                     .clk                  (clk),
@@ -781,17 +782,8 @@ module pbit_array_kings (
                 logic cfg_we_dse_w;
                 logic cfg_clr_dse_w;
 
-                assign cfg_we_dse_w =
-                    cfg_edge_we_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_DSE) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
-
-                assign cfg_clr_dse_w =
-                    cfg_edge_clr_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_DSE) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
+                assign cfg_we_dse_w  = cfg_edge_we_pulse_i && type_hit_dse && edge_row_hit[r] && edge_col_hit[c];
+                assign cfg_clr_dse_w = cfg_edge_clr_pulse_i && type_hit_dse && edge_row_hit[r] && edge_col_hit[c];
 
                 edge_reg_coupler u_edge_dse (
                     .clk                  (clk),
@@ -832,17 +824,8 @@ module pbit_array_kings (
                 logic cfg_we_dsw_w;
                 logic cfg_clr_dsw_w;
 
-                assign cfg_we_dsw_w =
-                    cfg_edge_we_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_DSW) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
-
-                assign cfg_clr_dsw_w =
-                    cfg_edge_clr_pulse_i &&
-                    (cfg_edge_type_i == EDGE_TYPE_EDGE_DSW) &&
-                    (cfg_edge_row_i == r[EDGE_TARGET_ROW_WIDTH-1:0]) &&
-                    (cfg_edge_col_i == c[EDGE_TARGET_COL_WIDTH-1:0]);
+                assign cfg_we_dsw_w  = cfg_edge_we_pulse_i && type_hit_dsw && edge_row_hit[r] && edge_col_hit[c];
+                assign cfg_clr_dsw_w = cfg_edge_clr_pulse_i && type_hit_dsw && edge_row_hit[r] && edge_col_hit[c];
 
                 edge_reg_coupler u_edge_dsw (
                     .clk                  (clk),

@@ -311,7 +311,7 @@ module mac(
 
     always @(*)begin
         case(mac_sel_i)
-            4'b1111: begin
+            4'b0001: begin
                 bias_sign_sel_w = bias_sign_0_i;
                 bias_prob_sel_w = bias_prob_0_i;
 
@@ -351,7 +351,7 @@ module mac(
                 edge_prob_w_sel_w  = edge_prob_w_0_i;
                 edge_prob_nw_sel_w = edge_prob_nw_0_i;
             end
-            4'b1111: begin
+            4'b0010: begin
                 bias_sign_sel_w = bias_sign_1_i;
                 bias_prob_sel_w = bias_prob_1_i;
 
@@ -391,7 +391,7 @@ module mac(
                 edge_prob_w_sel_w  = edge_prob_w_1_i;
                 edge_prob_nw_sel_w = edge_prob_nw_1_i;
             end
-            4'b1111: begin
+            4'b0100: begin
                 bias_sign_sel_w = bias_sign_2_i;
                 bias_prob_sel_w = bias_prob_2_i;
 
@@ -431,7 +431,7 @@ module mac(
                 edge_prob_w_sel_w  = edge_prob_w_2_i;
                 edge_prob_nw_sel_w = edge_prob_nw_2_i;
             end
-            4'b1111: begin
+            4'b1000: begin
                 bias_sign_sel_w = bias_sign_3_i;
                 bias_prob_sel_w = bias_prob_3_i;
 
@@ -615,7 +615,7 @@ module mac(
         .contrib_o       (bias_contrib_w)
     );
 
-    assign bias_contrib_ext_w = $signed({{3{bias_contrib_w[0]}}, bias_contrib_w});
+    assign bias_contrib_ext_w = $signed({{3{bias_contrib_w[1]}}, bias_contrib_w});
     assign h_sum_with_bias_w  = h_sum_w + bias_contrib_ext_w;
 
     assign macsum_d  = h_sum_with_bias_w;

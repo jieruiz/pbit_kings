@@ -19,23 +19,17 @@ module lfsr32_rng32 (
     output logic [NODE_SEED_WIDTH-1:0]       rnd32_o
 );
 
-    logic [NODE_SEED_WIDTH-1:0] global_node_seed_safe;
-    logic [NODE_SEED_WIDTH-1:0] row_node_seed_safe;
-    logic [NODE_SEED_WIDTH-1:0] local_node_seed_safe;
     logic [NODE_SEED_WIDTH-1:0] state_q, state_d;
     logic                       state_en;
     logic                       feedback;
     logic                       local_node_seed_vld_q, local_node_seed_vld_d;
 
     // Prevent each LFSR seed source from loading the all-zero lock-up state.
-    assign global_node_seed_safe = (global_node_seed_i == 32'h0000_0000) ? 32'h0000_0001 : global_node_seed_i;
-    assign row_node_seed_safe    = (row_node_seed_i == 32'h0000_0000) ? 32'h0000_0001 : row_node_seed_i;
-    assign local_node_seed_safe  = (local_node_seed_i == 32'h0000_0000) ? 32'h0000_0001 : local_node_seed_i;
     assign feedback              = state_q[31] ^ state_q[21] ^ state_q[1] ^ state_q[0];
-    assign state_d               = local_seed_node_we_i? local_node_seed_safe:
+    assign state_d               = local_seed_node_we_i? local_node_seed_i:
                                    node_load_i         ? local_node_seed_vld_q ? state_q:
-                                                         row_node_seed_vld_i   ? row_node_seed_safe:
-                                                         global_node_seed_vld_i? global_node_seed_safe:
+                                                         row_node_seed_vld_i   ? row_node_seed_i:
+                                                         global_node_seed_vld_i? global_node_seed_i:
                                                          state_q:
                                    en_i                ? {state_q[30:0], feedback}:
                                                          state_q;

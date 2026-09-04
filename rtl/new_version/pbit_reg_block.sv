@@ -629,7 +629,7 @@ module pbit_reg_block(
     assign node_target_en = (reg_addr_i == A_NODE_TARGET) && reg_wr_en_i;
     assign node_cfg_d     = {reg_wdata_i[NODE_CFG_BIAS_PROB_MSB:NODE_CFG_INIT_SPIN_LSB], reg_wdata_i[BIAS_VALID_MSB:INIT_VALID_LSB]};
     assign node_cfg_en    = (reg_addr_i == A_NODE_CFG) && reg_wr_en_i;
-    assign node_seed_d    = reg_wdata_i[NODE_SEED_MSB:NODE_SEED_LSB];
+    assign node_seed_d    = |reg_wdata_i[NODE_SEED_MSB:NODE_SEED_LSB]? reg_wdata_i[NODE_SEED_MSB:NODE_SEED_LSB]: 32'h0000_0001;
     assign node_seed_en   = (reg_addr_i == A_NODE_SEED) && reg_wr_en_i;
 
     // -------------------------------------------------------------------------

@@ -26,6 +26,7 @@ module pbit_control (
     logic                           trial_idx_en;
     logic                           macsum_en, macsum_en_dly;
     logic                           spin_sum_en;
+    logic                           majority_en;
 
     always @(*) begin
         case(state_q)

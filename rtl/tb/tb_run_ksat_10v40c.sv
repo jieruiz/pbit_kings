@@ -2,7 +2,7 @@
 `define TB_RUN_KSAT_10V40C
 import pbit_pkg::*;
 
-module tb_run_ksat_10v40c;
+module tb;
     localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
     localparam int unsigned K10_MIN_RUN_POLL_LIMIT = 1200;

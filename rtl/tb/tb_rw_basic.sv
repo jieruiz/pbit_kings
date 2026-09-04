@@ -2,7 +2,7 @@
 `define TB_RW_BASIC
 import pbit_pkg::*;
 
-module tb_rw_basic;
+module tb;
     localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
 

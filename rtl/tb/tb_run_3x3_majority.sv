@@ -2,7 +2,7 @@
 `define TB_RUN_3X3_MAJORITY
 import pbit_pkg::*;
 
-module tb_run_3x3_majority;
+module tb;
     localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
 
@@ -378,11 +378,11 @@ module tb_run_3x3_majority;
         read_reg(A_GLOBAL_CFG, rdata, "global cfg readback");
         report_mismatch("global cfg readback", rdata, expected_global_cfg);
 
-        if (u_pbit_top.u_pbit_array_kings.cnt_max !== ({num_majority, 1'b0} + 1'b1)) begin
+        if (u_pbit_top.u_pbit_array_kings.cnt_max !== (num_majority + 2)) begin
             error_count++;
             $error("[RUN_3X3_MAJORITY] cnt_max=%0d expected=%0d for num_majority=%0d time=%0t",
                    u_pbit_top.u_pbit_array_kings.cnt_max,
-                   ({num_majority, 1'b0} + 1'b1),
+                   (num_majority + 2),
                    num_majority,
                    $time);
         end
@@ -405,11 +405,9 @@ module tb_run_3x3_majority;
                  u_pbit_top.all_done_c2_w,
                  u_pbit_top.all_done_c1_w,
                  u_pbit_top.all_done_c0_w);
-        $display("[RUN_3X3_MAJORITY_DEBUG] done_cnt={%0d,%0d,%0d,%0d} cnt_max=%0d num_majority=%0d center_spin=%0b",
-                 u_pbit_top.u_pbit_array_kings.done_c3_cnt_q,
-                 u_pbit_top.u_pbit_array_kings.done_c2_cnt_q,
-                 u_pbit_top.u_pbit_array_kings.done_c1_cnt_q,
-                 u_pbit_top.u_pbit_array_kings.done_c0_cnt_q,
+        $display("[RUN_3X3_MAJORITY_DEBUG] done_cnt=%0d done_q=%0b cnt_max=%0d num_majority=%0d center_spin=%0b",
+                 u_pbit_top.u_pbit_array_kings.done_cnt_q,
+                 u_pbit_top.u_pbit_array_kings.done_q,
                  u_pbit_top.u_pbit_array_kings.cnt_max,
                  u_pbit_top.u_pbit_array_kings.num_majority_i,
                  u_pbit_top.u_pbit_array_kings.spin_flat[41]);

@@ -2,7 +2,7 @@
 `define TB_RUN_3X3_MAXCUT
 import pbit_pkg::*;
 
-module tb_run_3x3_maxcut;
+module tb;
     localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
     localparam int unsigned MAXCUT_OPT_SCORE = 14;
@@ -482,11 +482,9 @@ module tb_run_3x3_maxcut;
                  u_pbit_top.i0_level_w,
                  u_pbit_top.u_phase_ctrl_4color.run_busy_o,
                  u_pbit_top.u_phase_ctrl_4color.run_done_o);
-        $display("[RUN_3X3_MAXCUT_DEBUG] done_cnt={%0d,%0d,%0d,%0d} cnt_max=%0d num_majority=%0d",
-                 u_pbit_top.u_pbit_array_kings.done_c3_cnt_q,
-                 u_pbit_top.u_pbit_array_kings.done_c2_cnt_q,
-                 u_pbit_top.u_pbit_array_kings.done_c1_cnt_q,
-                 u_pbit_top.u_pbit_array_kings.done_c0_cnt_q,
+        $display("[RUN_3X3_MAXCUT_DEBUG] done_cnt=%0d done_q=%0b cnt_max=%0d num_majority=%0d",
+                 u_pbit_top.u_pbit_array_kings.done_cnt_q,
+                 u_pbit_top.u_pbit_array_kings.done_q,
                  u_pbit_top.u_pbit_array_kings.cnt_max,
                  u_pbit_top.u_pbit_array_kings.num_majority_i);
     endtask

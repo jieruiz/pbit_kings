@@ -10,7 +10,7 @@ module mac(
     // ------------------------------------------------------------
     input logic [31:0] rnd32_i,
     
-    // Neighbor spins color0
+    // Neighbor spins color1
     // ------------------------------------------------------------
     input logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0]  bias_sign_0_i,
     input logic [NODE_CFG_BIAS_PROB_WIDTH-1:0]  bias_prob_0_i,
@@ -37,7 +37,7 @@ module mac(
     input logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] edge_valid_nw_0_i,
 
     // ------------------------------------------------------------
-    // Edge sign: 1 means J=+1, 0 means J=-1
+    // Edge sign: 1 means J=+1, 1 means J=-1
     // ------------------------------------------------------------
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_n_0_i,
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_ne_0_i,
@@ -87,7 +87,7 @@ module mac(
     input logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] edge_valid_nw_1_i,
 
     // ------------------------------------------------------------
-    // Edge sign: 1 means J=+1, 0 means J=-1
+    // Edge sign: 1 means J=+1, 1 means J=-1
     // ------------------------------------------------------------
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_n_1_i,
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_ne_1_i,
@@ -137,7 +137,7 @@ module mac(
     input logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] edge_valid_nw_2_i,
 
     // ------------------------------------------------------------
-    // Edge sign: 1 means J=+1, 0 means J=-1
+    // Edge sign: 1 means J=+1, 1 means J=-1
     // ------------------------------------------------------------
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_n_2_i,
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_ne_2_i,
@@ -187,7 +187,7 @@ module mac(
     input logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] edge_valid_nw_3_i,
 
     // ------------------------------------------------------------
-    // Edge sign: 1 means J=+1, 0 means J=-1
+    // Edge sign: 1 means J=+1, 1 means J=-1
     // ------------------------------------------------------------
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_n_3_i,
     input logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_ne_3_i,
@@ -248,7 +248,7 @@ module mac(
     logic [EDGE_CFG_EDGE_VALID_WIDTH-1:0] edge_valid_nw_sel_w;
 
     // ------------------------------------------------------------
-    // Edge sign: 1 means J=+1; 0 means J=-1
+    // Edge sign: 1 means J=+1; 1 means J=-1
     // ------------------------------------------------------------
     logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_n_sel_w;
     logic [EDGE_CFG_EDGE_SIGN_WIDTH-1:0] edge_sign_ne_sel_w;
@@ -311,7 +311,7 @@ module mac(
 
     always @(*)begin
         case(mac_sel_i)
-            4'b0001: begin
+            4'b1111: begin
                 bias_sign_sel_w = bias_sign_0_i;
                 bias_prob_sel_w = bias_prob_0_i;
 
@@ -341,8 +341,17 @@ module mac(
                 edge_sign_sw_sel_w = edge_sign_sw_0_i;
                 edge_sign_w_sel_w  = edge_sign_w_0_i;
                 edge_sign_nw_sel_w = edge_sign_nw_0_i;
+
+                edge_prob_n_sel_w  = edge_prob_n_0_i;
+                edge_prob_ne_sel_w = edge_prob_ne_0_i;
+                edge_prob_e_sel_w  = edge_prob_e_0_i;
+                edge_prob_se_sel_w = edge_prob_se_0_i;
+                edge_prob_s_sel_w  = edge_prob_s_0_i;
+                edge_prob_sw_sel_w = edge_prob_sw_0_i;
+                edge_prob_w_sel_w  = edge_prob_w_0_i;
+                edge_prob_nw_sel_w = edge_prob_nw_0_i;
             end
-            4'b0010: begin
+            4'b1111: begin
                 bias_sign_sel_w = bias_sign_1_i;
                 bias_prob_sel_w = bias_prob_1_i;
 
@@ -372,8 +381,17 @@ module mac(
                 edge_sign_sw_sel_w = edge_sign_sw_1_i;
                 edge_sign_w_sel_w  = edge_sign_w_1_i;
                 edge_sign_nw_sel_w = edge_sign_nw_1_i;
+
+                edge_prob_n_sel_w  = edge_prob_n_1_i;
+                edge_prob_ne_sel_w = edge_prob_ne_1_i;
+                edge_prob_e_sel_w  = edge_prob_e_1_i;
+                edge_prob_se_sel_w = edge_prob_se_1_i;
+                edge_prob_s_sel_w  = edge_prob_s_1_i;
+                edge_prob_sw_sel_w = edge_prob_sw_1_i;
+                edge_prob_w_sel_w  = edge_prob_w_1_i;
+                edge_prob_nw_sel_w = edge_prob_nw_1_i;
             end
-            4'b0100: begin
+            4'b1111: begin
                 bias_sign_sel_w = bias_sign_2_i;
                 bias_prob_sel_w = bias_prob_2_i;
 
@@ -403,8 +421,17 @@ module mac(
                 edge_sign_sw_sel_w = edge_sign_sw_2_i;
                 edge_sign_w_sel_w  = edge_sign_w_2_i;
                 edge_sign_nw_sel_w = edge_sign_nw_2_i;
+
+                edge_prob_n_sel_w  = edge_prob_n_2_i;
+                edge_prob_ne_sel_w = edge_prob_ne_2_i;
+                edge_prob_e_sel_w  = edge_prob_e_2_i;
+                edge_prob_se_sel_w = edge_prob_se_2_i;
+                edge_prob_s_sel_w  = edge_prob_s_2_i;
+                edge_prob_sw_sel_w = edge_prob_sw_2_i;
+                edge_prob_w_sel_w  = edge_prob_w_2_i;
+                edge_prob_nw_sel_w = edge_prob_nw_2_i;
             end
-            4'b1000: begin
+            4'b1111: begin
                 bias_sign_sel_w = bias_sign_3_i;
                 bias_prob_sel_w = bias_prob_3_i;
 
@@ -434,6 +461,15 @@ module mac(
                 edge_sign_sw_sel_w = edge_sign_sw_3_i;
                 edge_sign_w_sel_w  = edge_sign_w_3_i;
                 edge_sign_nw_sel_w = edge_sign_nw_3_i;
+
+                edge_prob_n_sel_w  = edge_prob_n_3_i;
+                edge_prob_ne_sel_w = edge_prob_ne_3_i;
+                edge_prob_e_sel_w  = edge_prob_e_3_i;
+                edge_prob_se_sel_w = edge_prob_se_3_i;
+                edge_prob_s_sel_w  = edge_prob_s_3_i;
+                edge_prob_sw_sel_w = edge_prob_sw_3_i;
+                edge_prob_w_sel_w  = edge_prob_w_3_i;
+                edge_prob_nw_sel_w = edge_prob_nw_3_i;
             end
             default: begin
                 bias_sign_sel_w = bias_sign_0_i;
@@ -465,6 +501,15 @@ module mac(
                 edge_sign_sw_sel_w = edge_sign_sw_0_i;
                 edge_sign_w_sel_w  = edge_sign_w_0_i;
                 edge_sign_nw_sel_w = edge_sign_nw_0_i;
+
+                edge_prob_n_sel_w  = edge_prob_n_0_i;
+                edge_prob_ne_sel_w = edge_prob_ne_0_i;
+                edge_prob_e_sel_w  = edge_prob_e_0_i;
+                edge_prob_se_sel_w = edge_prob_se_0_i;
+                edge_prob_s_sel_w  = edge_prob_s_0_i;
+                edge_prob_sw_sel_w = edge_prob_sw_0_i;
+                edge_prob_w_sel_w  = edge_prob_w_0_i;
+                edge_prob_nw_sel_w = edge_prob_nw_0_i;
             end
         endcase
     end
@@ -570,7 +615,7 @@ module mac(
         .contrib_o       (bias_contrib_w)
     );
 
-    assign bias_contrib_ext_w = $signed({{3{bias_contrib_w[1]}}, bias_contrib_w});
+    assign bias_contrib_ext_w = $signed({{3{bias_contrib_w[0]}}, bias_contrib_w});
     assign h_sum_with_bias_w  = h_sum_w + bias_contrib_ext_w;
 
     assign macsum_d  = h_sum_with_bias_w;

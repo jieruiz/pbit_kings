@@ -91,6 +91,9 @@ module pbit_array_kings (
 
     genvar r;
     genvar c;
+    // AREA_OPT_TANH_SHARED: Separate generate indices create the fixed 2x2 regional bank topology.
+    genvar tanh_qr;
+    genvar tanh_qc;
 
     // ------------------------------------------------------------
     // Snapshot Readback.
@@ -235,6 +238,11 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // tanh LUT wires
     // ------------------------------------------------------------
+    // AREA_OPT_TANH_SHARED: Split the shared tile grid into two row regions and two column regions.
+    localparam int TANH_QUADRANT_ROW_SIZE = (SHARED_ROWS + 1) / 2;
+    localparam int TANH_QUADRANT_COL_SIZE = (SHARED_COLS + 1) / 2;
+    // AREA_OPT_TANH_SHARED: Each of the four quadrants owns ten positive-|h| threshold words.
+    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_w [0:1][0:1][0:9];
     logic [LUT_WIDTH-1:0]           p_up_thr_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
 
     // ------------------------------------------------------------
@@ -599,16 +607,27 @@ module pbit_array_kings (
         end
     endgenerate
 
-    //////////////////////////////////////////////////
-    // shared tanh_lut_comb module for all p-bits
-    //////////////////////////////////////////////////
+    // AREA_OPT_TANH_SHARED: Four regional banks limit each threshold net to one quadrant of the array.
+    generate
+        for (tanh_qr = 0; tanh_qr < 2; tanh_qr = tanh_qr + 1) begin : GEN_TANH_BANK_QUAD_R
+            for (tanh_qc = 0; tanh_qc < 2; tanh_qc = tanh_qc + 1) begin : GEN_TANH_BANK_QUAD_C
+                tanh_threshold_bank u_tanh_threshold_bank (
+                    .i0_level_i       (i0_level_i),
+                    .pos_thr_by_abs_o (tanh_pos_thr_by_abs_w[tanh_qr][tanh_qc])
+                );
+            end
+        end
+    endgenerate
+
+    // AREA_OPT_TANH_SHARED: Bind every tile to its elaboration-time quadrant, keeping maximum bank fanout near 100.
     generate
         for(r = 0; r < SHARED_ROWS; r = r + 1) begin : GEN_TANH_LUT_ROW
             for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_TANH_LUT_COL
-                tanh_lut_comb u_tanh_lut_comb (
-                    .i0_level_i (i0_level_i),
-                    .h_i        (macsum_w[r][c]),
-                    .p_up_thr_o (p_up_thr_w[r][c])
+                tanh_threshold_select u_tanh_threshold_select (
+                    .h_i              (macsum_w[r][c]),
+                    .pos_thr_by_abs_i (tanh_pos_thr_by_abs_w[r / TANH_QUADRANT_ROW_SIZE]
+                                                                 [c / TANH_QUADRANT_COL_SIZE]),
+                    .p_up_thr_o       (p_up_thr_w[r][c])
                 );
             end
         end

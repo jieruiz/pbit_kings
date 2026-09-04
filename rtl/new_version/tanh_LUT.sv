@@ -2,14 +2,11 @@
 `define TANH_LUT_COMB
 import pbit_pkg::*;
 
-module tanh_lut_comb (
-    input  logic  [I0_LEVEL_WIDTH-1:0]     i0_level_i,
-    input  logic signed [MACSUM_WIDTH-1:0] h_i,
-    output logic  [LUT_WIDTH-1:0]          p_up_thr_o
+// AREA_OPT_TANH_SHARED: Decode the global I0 level once and broadcast all ten positive-|h| thresholds.
+module tanh_threshold_bank (
+    input  logic [I0_LEVEL_WIDTH-1:0] i0_level_i,
+    output logic [LUT_WIDTH-1:0]      pos_thr_by_abs_o [0:9]
 );
-    logic [MACSUM_WIDTH-2:0]  h_abs;
-    logic [LUT_WIDTH-1:0] pos_thr;
-
     function automatic logic [LUT_WIDTH-1:0] tanh_pos_thr;
         input logic[I0_LEVEL_WIDTH-1:0] level;
         input logic[MACSUM_WIDTH-2:0] h_abs_in;
@@ -1049,40 +1046,43 @@ module tanh_lut_comb (
         end
     endfunction
 
+    // AREA_OPT_TANH_SHARED: Materialize only ten level-dependent values instead of one full decoder per tile.
+    genvar h_idx;
+    generate
+        for (h_idx = 0; h_idx < 10; h_idx = h_idx + 1) begin : GEN_POS_THR_BY_ABS
+            assign pos_thr_by_abs_o[h_idx] =
+                tanh_pos_thr(i0_level_i, h_idx[MACSUM_WIDTH-2:0]);
+        end
+    endgenerate
+
+endmodule
+
+// AREA_OPT_TANH_SHARED: Keep only signed-|h| saturation and a 10:1 threshold selector in each tile.
+module tanh_threshold_select (
+    input  logic signed [MACSUM_WIDTH-1:0] h_i,
+    input  wire         [LUT_WIDTH-1:0]    pos_thr_by_abs_i [0:9],
+    output logic        [LUT_WIDTH-1:0]    p_up_thr_o
+);
+    logic [MACSUM_WIDTH-1:0] h_mag;
+    logic [MACSUM_WIDTH-2:0] h_abs_sat;
+    logic [LUT_WIDTH-1:0]    pos_thr;
+
+    // AREA_OPT_TANH_SHARED: Replace the enumerated signed-magnitude case with equivalent abs-and-saturate logic.
     always @(*) begin
-        case(h_i)
-            -5'sd16: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd15: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd14: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd13: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd12: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd11: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd10: h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd9 : h_abs = (MACSUM_WIDTH-1)'(9);
-            -5'sd8 : h_abs = (MACSUM_WIDTH-1)'(8);
-            -5'sd7 : h_abs = (MACSUM_WIDTH-1)'(7);
-            -5'sd6 : h_abs = (MACSUM_WIDTH-1)'(6);
-            -5'sd5 : h_abs = (MACSUM_WIDTH-1)'(5);
-            -5'sd4 : h_abs = (MACSUM_WIDTH-1)'(4);        
-            -5'sd3 : h_abs = (MACSUM_WIDTH-1)'(3);
-            -5'sd2 : h_abs = (MACSUM_WIDTH-1)'(2);
-            -5'sd1 : h_abs = (MACSUM_WIDTH-1)'(1);
-            5'sd15 : h_abs = (MACSUM_WIDTH-1)'(9);
-            5'sd14 : h_abs = (MACSUM_WIDTH-1)'(9);
-            5'sd13 : h_abs = (MACSUM_WIDTH-1)'(9);
-            5'sd12 : h_abs = (MACSUM_WIDTH-1)'(9);
-            5'sd11 : h_abs = (MACSUM_WIDTH-1)'(9);
-            5'sd10 : h_abs = (MACSUM_WIDTH-1)'(9);
-            default: h_abs = h_i[MACSUM_WIDTH-2:0];
-        endcase
+        h_mag = h_i[MACSUM_WIDTH-1]
+              ? (~h_i + {{(MACSUM_WIDTH-1){1'b0}}, 1'b1})
+              : h_i;
+
+        if (h_mag > MACSUM_WIDTH'(9))
+            h_abs_sat = (MACSUM_WIDTH-1)'(9);
+        else
+            h_abs_sat = h_mag[MACSUM_WIDTH-2:0];
     end
 
-    assign pos_thr = tanh_pos_thr(i0_level_i, h_abs);
-    assign p_up_thr_o = h_i[MACSUM_WIDTH-1]? 16'hFFFF - pos_thr: pos_thr;
+    assign pos_thr = pos_thr_by_abs_i[h_abs_sat];
 
-    // tanh symmetry:
-    // p(-h) = 1 - p(h)
-    // Quantized version: thr(-h) = 16'hFFFF - thr(+h)
+    // AREA_OPT_TANH_SHARED: Preserve the original quantized symmetry exactly for negative h values.
+    assign p_up_thr_o = h_i[MACSUM_WIDTH-1] ? 16'hFFFF - pos_thr : pos_thr;
 
 endmodule
 `endif

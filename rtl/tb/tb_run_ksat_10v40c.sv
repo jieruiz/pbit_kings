@@ -77,8 +77,9 @@ module tb;
         input logic [NUM_MAJORITY_WIDTH-1:0] num_majority
     );
         pack_global_cfg = '0;
-        pack_global_cfg[NUM_SWEEP_MSB:NUM_SWEEP_LSB] = num_sweeps;
-        pack_global_cfg[NUM_MAJORITY_MSB:NUM_MAJORITY_LSB] = num_majority;
+        // RTL_V2_ADAPT: The current RTL stores sweep and majority counts as actual value minus one.
+        pack_global_cfg[NUM_SWEEP_MSB:NUM_SWEEP_LSB] = NUM_SWEEP_WIDTH'(num_sweeps - 1);
+        pack_global_cfg[NUM_MAJORITY_MSB:NUM_MAJORITY_LSB] = NUM_MAJORITY_WIDTH'(num_majority - 1);
     endfunction
 
     function automatic logic [31:0] pack_global_ctrl(
@@ -119,8 +120,8 @@ module tb;
         input logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_prob
     );
         pack_node_cfg = '0;
+        // RTL_V2_ADAPT: Seed validity moved out of NODE_CFG and is controlled by APPLY_SEED.
         pack_node_cfg[INIT_VALID_MSB:INIT_VALID_LSB] = 1'b1;
-        pack_node_cfg[SEED_VALID_MSB:SEED_VALID_LSB] = 1'b1;
         pack_node_cfg[CLAMP_VALID_MSB:CLAMP_VALID_LSB] = 1'b1;
         pack_node_cfg[BIAS_VALID_MSB:BIAS_VALID_LSB] = 1'b1;
         pack_node_cfg[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB] = init_spin;
@@ -132,17 +133,24 @@ module tb;
 
     function automatic logic [31:0] pack_node_cmd(
         input logic apply_cfg,
-        input logic load_cfg,
-        input logic clear_scope_en,
+        input logic apply_seed,
+        input logic load_node,
+        input logic clear_cfg_scope_en,
+        input logic clear_seed_scope_en,
         input logic clear_local_all,
-        input logic readback_node
+        input logic readback_cfg,
+        input logic readback_seed
     );
         pack_node_cmd = '0;
+        // RTL_V2_ADAPT: Match the split config/seed command fields in the current register map.
         pack_node_cmd[APPLY_CFG_MSB:APPLY_CFG_LSB] = apply_cfg;
-        pack_node_cmd[LOAD_CFG_MSB:LOAD_CFG_LSB] = load_cfg;
-        pack_node_cmd[CLEAR_SCOPE_EN_MSB:CLEAR_SCOPE_EN_LSB] = clear_scope_en;
+        pack_node_cmd[APPLY_SEED_MSB:APPLY_SEED_LSB] = apply_seed;
+        pack_node_cmd[LOAD_NODE_MSB:LOAD_NODE_LSB] = load_node;
+        pack_node_cmd[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB] = clear_cfg_scope_en;
+        pack_node_cmd[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB] = clear_seed_scope_en;
         pack_node_cmd[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB] = clear_local_all;
-        pack_node_cmd[READBACK_NODE_MSB:READBACK_NODE_LSB] = readback_node;
+        pack_node_cmd[READBACK_CFG_MSB:READBACK_CFG_LSB] = readback_cfg;
+        pack_node_cmd[READBACK_SEED_MSB:READBACK_SEED_LSB] = readback_seed;
     endfunction
 
     function automatic logic [31:0] pack_edge_target(
@@ -188,8 +196,9 @@ module tb;
 
     function automatic logic [31:0] pack_interval_word(input int unsigned base_idx);
         pack_interval_word = '0;
-        pack_interval_word[SWEEP_INTERVAL0_MSB:SWEEP_INTERVAL0_LSB] = k10_sweep_interval[base_idx + 0];
-        pack_interval_word[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB] = k10_sweep_interval[base_idx + 1];
+        // RTL_V2_ADAPT: The current RTL stores each sweep interval as actual value minus one.
+        pack_interval_word[SWEEP_INTERVAL0_MSB:SWEEP_INTERVAL0_LSB] = SWEEP_INTERVAL_WIDTH'(k10_sweep_interval[base_idx + 0] - 1);
+        pack_interval_word[SWEEP_INTERVAL1_MSB:SWEEP_INTERVAL1_LSB] = SWEEP_INTERVAL_WIDTH'(k10_sweep_interval[base_idx + 1] - 1);
     endfunction
 
     task automatic report_mismatch(
@@ -326,18 +335,54 @@ module tb;
     endtask
 
     task automatic configure_nodes(input int unsigned run_idx);
+        bit tile_seeded [SHARED_ROWS][SHARED_COLS];
+        int unsigned tile_row;
+        int unsigned tile_col;
+
+        // RTL_V2_ADAPT: Apply per-node configuration independently from the shared tile seeds.
         for (int idx = 0; idx < K10_NUM_PHYSICAL; idx++) begin
             write_reg(A_NODE_TARGET,
                       pack_node_target(TARGET_MODE_LOCAL, k10_phys_row[idx], k10_phys_col[idx]),
                       "node target");
             write_reg(A_NODE_CFG,
-                      pack_node_cfg(k10_node_init_spin[run_idx][idx], 1'b0, k10_node_init_spin[run_idx][idx],
-                                    k10_node_bias_sign[idx], k10_node_bias_prob[idx]),
-                      "node cfg");
-            write_reg(A_NODE_SEED, k10_node_seed[run_idx][idx], "node seed");
-            write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0), "node apply");
+                       pack_node_cfg(k10_node_init_spin[run_idx][idx], 1'b0, k10_node_init_spin[run_idx][idx],
+                                     k10_node_bias_sign[idx], k10_node_bias_prob[idx]),
+                       "node cfg");
+            write_reg(A_NODE_CMD,
+                      pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0),
+                      "node apply");
             repeat (1) @(posedge clk);
         end
+
+        // RTL_V2_ADAPT: Program one seed per 2x2 shared-LFSR tile using tile coordinates.
+        for (int r = 0; r < SHARED_ROWS; r++) begin
+            for (int c = 0; c < SHARED_COLS; c++) begin
+                tile_seeded[r][c] = 1'b0;
+            end
+        end
+
+        for (int idx = 0; idx < K10_NUM_PHYSICAL; idx++) begin
+            tile_row = k10_phys_row[idx] / 2;
+            tile_col = k10_phys_col[idx] / 2;
+
+            if (!tile_seeded[tile_row][tile_col]) begin
+                write_reg(A_NODE_TARGET,
+                          pack_node_target(TARGET_MODE_LOCAL,
+                                           NODE_TARGET_ROW_WIDTH'(tile_row),
+                                           NODE_TARGET_COL_WIDTH'(tile_col)),
+                          "seed target");
+                write_reg(A_NODE_SEED, k10_node_seed[run_idx][idx], "node seed");
+                write_reg(A_NODE_CMD,
+                          pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0),
+                          "node apply seed");
+                tile_seeded[tile_row][tile_col] = 1'b1;
+            end
+        end
+
+        // RTL_V2_ADAPT: Commit the staged node configuration and tile seeds with LOAD_NODE.
+        write_reg(A_NODE_CMD,
+                  pack_node_cmd(1'b0, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0),
+                  "node load");
     endtask
 
     task automatic clear_edges();

@@ -45,12 +45,11 @@ module lfsr32_rng32 (
                                    local_seed_clr_pulse_i | local_seed_clr_all_pulse_i? 1'b0:
                                    local_node_seed_vld_q;
 
-    dffsre #(.WIDTH(NODE_SEED_WIDTH),
-             .RESET_VALUE({{(NODE_SEED_WIDTH-1){1'b0}}, 1'b1})
+    dffre #(.WIDTH(NODE_SEED_WIDTH),
+           .RESET_VALUE({{(NODE_SEED_WIDTH-1){1'b0}}, 1'b1})
     ) state_ff (
         .clk(clk),
         .rst_n(rst_n),
-        .soft_rstn_i(soft_rstn_i),
         .en_i(state_en),
         .d_i(state_d),
         .q_o(state_q)

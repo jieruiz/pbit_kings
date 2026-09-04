@@ -3,3 +3,11 @@
 3.error status增加seed_row_oor和seed_col_oor信号
 4.node_cfg删除seed_valid域段，clamp_valid和bias_valid域段位置相应更改
 5.node_cmd增加apply_seed/clear_seed_scope_en/readback_seed域段，其他域段位置相应更改
+
+
+9/3
+1. 优化vote逻辑，改为由一个位宽为num_majority_width+1的寄存器,每次计算结果累加，最后进行判断
+2. 将pnode中的计算模块全部摘出来，作为四色的共享资源，即一个计算资源由四个节点共享 由此增加了mac模块和comparator_vote模块
+3. pnode的状态机状态更改，删去PBIT状态改为IDLE -> num_majority_i+1次的CACL -> SUM -> MAJORITY -> IDLE，相当于一个phase需要（num_majority_i+1）+1+1+1个周期 
+4. pnode的状态机控制单独摘出来 全阵列只共用一个，称为pbit_control模块， 用current_phase独热信号区别哪个phase
+5. 软复位只复位运行状态，但是保留已经写入的配置

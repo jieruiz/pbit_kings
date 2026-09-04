@@ -25,6 +25,8 @@ module phase_ctrl_4color (
     output logic phase_start_c2_o,
     output logic phase_start_c3_o,
 
+    output logic [3:0] current_phase_o,
+
     output logic  [I0_LEVEL_WIDTH-1:0]  i0_level_o,
 
     output logic         run_busy_o,
@@ -188,6 +190,20 @@ module phase_ctrl_4color (
                         run_done_q;
     assign run_done_o = run_done_q;
 
+    // ------------------------------------------------------------
+    // current phase
+    // ------------------------------------------------------------
+    always @(*) begin
+        case(state_q)
+            S_IDLE:    current_phase_o = 4'b0000;
+            S_WAIT_C0: current_phase_o = 4'b0001;
+            S_WAIT_C1: current_phase_o = 4'b0010;
+            S_WAIT_C2: current_phase_o = 4'b0100;
+            S_WAIT_C3: current_phase_o = 4'b1000;
+            default:   current_phase_o = 4'b0000;
+        endcase
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if(~rst_n) begin
             state_q <= S_IDLE;
@@ -198,25 +214,31 @@ module phase_ctrl_4color (
         end
     end
 
-    dffe #(.WIDTH(NUM_SWEEP_WIDTH)
+    dffsre #(.WIDTH(NUM_SWEEP_WIDTH)
     ) sweep_cnt_ff (
         .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
         .en_i(sweep_cnt_en),
         .d_i(sweep_cnt_d),
         .q_o(sweep_cnt_q)
     );
 
-    dffe #(.WIDTH(SWEEP_INTERVAL_WIDTH)
+    dffsre #(.WIDTH(SWEEP_INTERVAL_WIDTH)
     ) sweep_interval_cnt_ff (
         .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
         .en_i(sweep_interval_cnt_en),
         .d_i(sweep_interval_cnt_d),
         .q_o(sweep_interval_cnt_q)
     );
 
-    dffe #(.WIDTH(SWEEP_ROUND_WIDTH)
+    dffsre #(.WIDTH(SWEEP_ROUND_WIDTH)
     ) sweep_round_cnt_ff (
         .clk(clk),
+        .rst_n(rst_n),
+        .soft_rstn_i(glb_soft_rstn_i),
         .en_i(sweep_round_cnt_en),
         .d_i(sweep_round_cnt_d),
         .q_o(sweep_round_cnt_q)

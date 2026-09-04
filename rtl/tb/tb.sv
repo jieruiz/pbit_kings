@@ -297,7 +297,7 @@ module tb;
         req_send(op, waddr, wdata, status, raddr, rdata);
         $display("req end at %0t", $time());
         if(op_e == OP_READ) begin
-            $display("BIAS_PROB: 'd%0d\nBIAS_SIGN: 'b%0b\nCLAMP_SPIN: 'b%0b\nCLAMP_EN: 'b%0b\nINIT_SPIN: 'b%0b\nBIAS_VALID: 'b%0b\nCLAMP_VALID: 'b%0b\nSEED_VALID: 'b%0b\nINIT_VALID: 'b%0b",
+            $display("BIAS_PROB: 'd%0d\nBIAS_SIGN: 'b%0b\nCLAMP_SPIN: 'b%0b\nCLAMP_EN: 'b%0b\nINIT_SPIN: 'b%0b\nBIAS_VALID: 'b%0b\nCLAMP_VALID: 'b%0b\nINIT_VALID: 'b%0b",
                       rdata[NODE_CFG_BIAS_PROB_MSB:NODE_CFG_BIAS_PROB_LSB], rdata[NODE_CFG_BIAS_SIGN_MSB:NODE_CFG_BIAS_SIGN_LSB],
                       rdata[NODE_CFG_CLAMP_SPIN_MSB:NODE_CFG_CLAMP_SPIN_LSB], rdata[NODE_CFG_CLAMP_EN_MSB:NODE_CFG_CLAMP_EN_LSB],
                       rdata[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB], rdata[BIAS_VALID_MSB:BIAS_VALID_LSB], rdata[CLAMP_VALID_MSB:CLAMP_VALID_LSB], rdata[INIT_VALID_MSB:INIT_VALID_LSB]);
@@ -552,7 +552,7 @@ module tb;
             req_node_rdata_cfg();
         end
 
-        for(int i = 0; i < SEED_ROWS; i++) begin
+        for(int i = 0; i < SHARED_ROWS; i++) begin
             req_node_target(
                 .op_e(OP_WRITE),
                 .col('d0),
@@ -686,11 +686,37 @@ module tb;
         end
         //glb_cfg
         req_global_cfg(
-            .num_majority('d5),
-            .num_sweep('d5)
+            .op_e(OP_WRITE),
+            .num_majority('d3),
+            .num_sweep('d1)
         );
 
-        
+        //error
+        req_error_status();
+
+        //glb_ctrl
+        req_global_ctrl(
+            .cfg_done_set(1'b1),
+            .run_done_clear(1'b1),
+            .error_clear(1'b1)
+        );
+
+        req_global_ctrl(
+            .run_start(1'b1)
+        );
+
+        req_global_status();
+        while(rdata[RUN_DONE_MSB:RUN_DONE_LSB] != 1'b1) begin
+            req_global_status();
+        end
+        //error
+        req_error_status();
+        req_global_ctrl(
+            .snapshot_latch(1'b1)
+        );
+        for(int i = 0; i < SPIN_RDATA_REG_NUM; i++) begin
+            req_spin_data(i);
+        end
         $finish();
     end
 endmodule

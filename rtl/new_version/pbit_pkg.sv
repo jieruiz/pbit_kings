@@ -4,10 +4,8 @@ package pbit_pkg;
     //array parameters
     parameter int ROWS = 40;
     parameter int COLS = 40;
-    parameter int SEED_ROWS = (ROWS+1)/2;
-    parameter int SEED_COLS = (COLS+1)/2;
-    parameter int TANH_ROWS = (ROWS+1)/2;
-    parameter int TANH_COLS = (COLS+1)/2;
+    parameter int SHARED_ROWS = (ROWS+1)/2;
+    parameter int SHARED_COLS = (COLS+1)/2;
     parameter int CLK_FREQ_HZ = 100_000_000;
     parameter int BAUD_RATE = 10_000_000;
     parameter int N_SPIN = ROWS * COLS;
@@ -31,10 +29,10 @@ package pbit_pkg;
     parameter logic [TARGET_MODE_WIDTH-1:0] TARGET_MODE_LOCAL = 2'd2;
     parameter TARGET_MODE_LSB = 0;
     parameter TARGET_MODE_MSB = TARGET_MODE_LSB + TARGET_MODE_WIDTH - 1;
-    parameter NODE_TARGET_ROW_WIDTH = 6;
+    parameter NODE_TARGET_ROW_WIDTH = $clog2(ROWS);
     parameter NODE_TARGET_ROW_LSB = 8;
     parameter NODE_TARGET_ROW_MSB = NODE_TARGET_ROW_LSB + NODE_TARGET_ROW_WIDTH - 1;
-    parameter NODE_TARGET_COL_WIDTH = 6;
+    parameter NODE_TARGET_COL_WIDTH = $clog2(COLS);
     parameter NODE_TARGET_COL_LSB = 16;
     parameter NODE_TARGET_COL_MSB = NODE_TARGET_COL_LSB + NODE_TARGET_COL_WIDTH - 1;
 
@@ -111,10 +109,10 @@ package pbit_pkg;
     parameter EDGE_TYPE_EDGE_DSW = 2'd3;
     parameter EDGE_TYPE_LSB = 0;
     parameter EDGE_TYPE_MSB = EDGE_TYPE_LSB + EDGE_TYPE_WIDTH - 1;
-    parameter EDGE_TARGET_ROW_WIDTH = 6;
+    parameter EDGE_TARGET_ROW_WIDTH = $clog2(ROWS);
     parameter EDGE_TARGET_ROW_LSB = 8;
     parameter EDGE_TARGET_ROW_MSB = EDGE_TARGET_ROW_LSB + EDGE_TARGET_ROW_WIDTH - 1;
-    parameter EDGE_TARGET_COL_WIDTH = 6;
+    parameter EDGE_TARGET_COL_WIDTH = $clog2(COLS);
     parameter EDGE_TARGET_COL_LSB = 16;
     parameter EDGE_TARGET_COL_MSB = EDGE_TARGET_COL_LSB + EDGE_TARGET_COL_WIDTH - 1;
 

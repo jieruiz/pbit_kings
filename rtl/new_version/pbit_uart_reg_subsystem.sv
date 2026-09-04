@@ -48,9 +48,9 @@ module pbit_uart_reg_subsystem (
     output logic                                   global_node_seed_vld_o,
   
     output logic [NODE_CFG_W-1:0]                  row_node_cfg_o[ROWS],
-    output logic [NODE_SEED_WIDTH-1:0]             row_node_seed_o[SEED_ROWS],
+    output logic [NODE_SEED_WIDTH-1:0]             row_node_seed_o[SHARED_ROWS],
     output logic [ROWS-1:0]                        row_node_cfg_vld_o,
-    output logic [SEED_ROWS-1:0]                   row_node_seed_vld_o,
+    output logic [SHARED_ROWS-1:0]                 row_node_seed_vld_o,
 
     output logic                                   local_node_cfg_we_pulse_o,
     output logic                                   local_node_cfg_clr_pulse_o,

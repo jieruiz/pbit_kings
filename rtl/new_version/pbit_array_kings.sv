@@ -8,10 +8,9 @@ module pbit_array_kings (
     // Four phase-start enables.
     // Single clock, four phase enables, not four clocks.
     // ------------------------------------------------------------
-    input  logic                                 phase_start_c0_i,
-    input  logic                                 phase_start_c1_i,
-    input  logic                                 phase_start_c2_i,
-    input  logic                                 phase_start_c3_i,
+    input  logic                                 phase_start_i,
+
+    input  logic [3:0]                           current_phase_i,
 
     input  logic [I0_LEVEL_WIDTH-1:0]            i0_level_i,
 
@@ -37,9 +36,9 @@ module pbit_array_kings (
     input  logic                                 global_node_seed_vld_i,
 
     input  wire  [NODE_CFG_W-1:0]                row_node_cfg_i[0:ROWS-1],
-    input  wire  [NODE_SEED_WIDTH-1:0]           row_node_seed_i[0:SEED_ROWS-1],
+    input  wire  [NODE_SEED_WIDTH-1:0]           row_node_seed_i[0:SHARED_ROWS-1],
     input  logic [ROWS-1:0]                      row_node_cfg_vld_i,
-    input  logic [SEED_ROWS-1:0]                 row_node_seed_vld_i,
+    input  logic [SHARED_ROWS-1:0]                 row_node_seed_vld_i,
 
     input  logic                                 local_node_cfg_we_pulse_i,
     input  logic                                 local_node_cfg_clr_pulse_i,
@@ -92,6 +91,7 @@ module pbit_array_kings (
 
     genvar r;
     genvar c;
+
     // ------------------------------------------------------------
     // Snapshot Readback.
     // ------------------------------------------------------------
@@ -100,7 +100,8 @@ module pbit_array_kings (
     logic snapshot_vld_q, snapshot_vld_d;
 
     assign snapshot_flat_o = snapshot_flat_q;
-    assign snapshot_vld_o = snapshot_vld_q;
+    assign snapshot_vld_o  = snapshot_vld_q;
+
     // ------------------------------------------------------------
     // Node configuration decode
     // ------------------------------------------------------------
@@ -116,7 +117,7 @@ module pbit_array_kings (
     logic [NODE_CFG_CLAMP_SPIN_WIDTH-1:0] row_node_clamp_spin_w[ROWS];
     logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0]  row_node_bias_sign_w[ROWS];
     logic [NODE_CFG_BIAS_PROB_WIDTH-1:0]  row_node_bias_prob_w[ROWS];
-    logic [NODE_SEED_WIDTH-1:0]           row_node_seed_w[SEED_ROWS];
+    logic [NODE_SEED_WIDTH-1:0]           row_node_seed_w[SHARED_ROWS];
 
     logic [NODE_SEED_WIDTH-1:0]           local_node_seed_w;
 
@@ -136,7 +137,7 @@ module pbit_array_kings (
             assign row_node_bias_prob_w[r]  = row_node_cfg_i[r][NODE_CFG_BIAS_PROB_PACKED_MSB-NODE_CFG_VALID_W:NODE_CFG_BIAS_PROB_PACKED_LSB-NODE_CFG_VALID_W];
         end
         
-        for(r = 0; r < SEED_ROWS; r++) begin: ROW_NODE_SEED_DECODE
+        for(r = 0; r < SHARED_ROWS; r++) begin: ROW_NODE_SEED_DECODE
             assign row_node_seed_w[r]       = row_node_seed_i[r];
         end
     endgenerate
@@ -144,17 +145,19 @@ module pbit_array_kings (
     assign local_node_seed_w       = local_node_seed_i;
 
     // ------------------------------------------------------------
-    // Node spin and done arrays
+    // Node spin
     // ------------------------------------------------------------
-    logic spin [ROWS][COLS];
-    logic [N_SPIN-1:0] spin_flat;
-    logic [SNAPSHOT_WIDTH-1:0] spin_flat_reshape[SPIN_ADDR_MAX];
+    logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0] bias_sign_w[ROWS][COLS];
+    logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_prob_w[ROWS][COLS];
+    logic                                spin [ROWS][COLS];
+    logic [N_SPIN-1:0]                   spin_flat;
+    logic [SNAPSHOT_WIDTH-1:0]           spin_flat_reshape[SPIN_ADDR_MAX];
 
     // ------------------------------------------------------------
     // Node readback
     // ------------------------------------------------------------
     logic [NODE_CFG_W-1:0] local_node_rcfg_w[ROWS][COLS];
-    logic [NODE_SEED_WIDTH-1:0] local_node_rseed_w[SEED_ROWS][SEED_COLS];
+    logic [NODE_SEED_WIDTH-1:0] local_node_rseed_w[SHARED_ROWS][SHARED_COLS];
     logic [NODE_CFG_W-1:0] node_rdata_cfg_q, node_rdata_cfg_d;
     logic node_rdata_cfg_en;
     logic [NODE_SEED_WIDTH-1:0] node_rdata_seed_q, node_rdata_seed_d;
@@ -212,43 +215,49 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // lfsr32_rng32
     // ------------------------------------------------------------
-    logic lfsr_en_w;
-    logic [NODE_SEED_WIDTH-1:0] lfsr_rnd_32_w[0:SEED_ROWS-1][0:SEED_COLS-1];
+    logic                       lfsr_en_w;
+    logic [NODE_SEED_WIDTH-1:0] lfsr_rnd_32_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
+
+    // ------------------------------------------------------------
+    // mac
+    // ------------------------------------------------------------
+    logic [3:0]                     mac_sel_w;
+    logic                           mac_en_w;
+    logic signed [MACSUM_WIDTH-1:0] macsum_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
 
     // ------------------------------------------------------------
     // tanh LUT wires
     // ------------------------------------------------------------
-    logic signed [MACSUM_WIDTH-1:0] macsum_w[0:ROWS-1][0:COLS-1];
-    logic [3:0]                     tanh_sel_w;
-    logic [LUT_WIDTH-1:0]           p_up_thr_w[0:TANH_ROWS-1][0:TANH_COLS-1];
+    logic [LUT_WIDTH-1:0]           p_up_thr_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
+
+    // ------------------------------------------------------------
+    // comparator_vote
+    // ------------------------------------------------------------
+    logic spin_sum_en_w;
+    logic majority_en_w;
+    logic majority_spin_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
+
     // ------------------------------------------------------------
     // Done signal counter
-    // 2*num_majority+2
+    // num_majority_act+1+2
     // ------------------------------------------------------------
-    logic done_c0_q, done_c0_d;
-    logic done_c1_q, done_c1_d;
-    logic done_c2_q, done_c2_d;
-    logic done_c3_q, done_c3_d;
+    logic done_q, done_d;
 
-    logic is_c0_q, is_c0_d;
-    logic is_c1_q, is_c1_d;
-    logic is_c2_q, is_c2_d;
-    logic is_c3_q, is_c3_d;
+    logic [NUM_MAJORITY_WIDTH+1:0] done_cnt_q, done_cnt_d;
+    logic done_cnt_en;
 
-    logic [NUM_MAJORITY_WIDTH+1:0] done_c0_cnt_q, done_c0_cnt_d;
-    logic done_c0_cnt_en;
-    logic [NUM_MAJORITY_WIDTH+1:0] done_c1_cnt_q, done_c1_cnt_d;
-    logic done_c1_cnt_en;
-    logic [NUM_MAJORITY_WIDTH+1:0] done_c2_cnt_q, done_c2_cnt_d;
-    logic done_c2_cnt_en;
-    logic [NUM_MAJORITY_WIDTH+1:0] done_c3_cnt_q, done_c3_cnt_d;
-    logic done_c3_cnt_en;
     logic [NUM_MAJORITY_WIDTH+1:0] cnt_max;
 
-    assign all_done_c0_o = done_c0_q;
-    assign all_done_c1_o = done_c1_q;
-    assign all_done_c2_o = done_c2_q;
-    assign all_done_c3_o = done_c3_q;
+    //assign all_done_c0_o = done_c0_q;
+    //assign all_done_c1_o = done_c1_q;
+    //assign all_done_c2_o = done_c2_q;
+    //assign all_done_c3_o = done_c3_q;
+
+    assign all_done_c0_o = done_q & current_phase_i[0];
+    assign all_done_c1_o = done_q & current_phase_i[1];
+    assign all_done_c2_o = done_q & current_phase_i[2];
+    assign all_done_c3_o = done_q & current_phase_i[3];
+
     // ------------------------------------------------------------
     // Boundary defaults.
     // These directions have no edge coupler driving them.
@@ -317,6 +326,23 @@ module pbit_array_kings (
         end
     endgenerate
     // ------------------------------------------------------------
+    // p-bit node controller
+    // ------------------------------------------------------------
+    pbit_control u_pbit_control (
+        .clk                    (clk),
+        .rst_n                  (rst_n),
+        .soft_rstn_i            (glb_soft_rstn_i),
+
+        .phase_start_i          (phase_start_i),
+
+        .num_majority_i         (num_majority_i),
+
+        .mac_en_o               (mac_en_w),
+        .spin_sum_en_o          (spin_sum_en_w),
+        .majority_en_o          (majority_en_w)
+    );
+
+    // ------------------------------------------------------------
     // Instantiate all p-bit nodes.
     // Compile-time color:
     // color = 2*(row%2) + (col%2)
@@ -327,17 +353,13 @@ module pbit_array_kings (
 
                 localparam integer CELL_COLOR = (r % 2) * 2 + (c % 2);
 
-                logic local_start_w;
+                logic majority_en_match_w;
+                logic majority_spin_match_w;
                 logic local_node_cfg_we_match_w;
                 logic local_node_cfg_clr_pulse_match_w;
-                // Shared LUT output is a full probability threshold; keep all bits for pbit_node compare.
-                logic [LUT_WIDTH-1:0] p_up_thr_match_w;
-                logic [31:0] lfsr_rnd_32_match_w;
-                assign local_start_w =
-                    (CELL_COLOR == 0) ? phase_start_c0_i :
-                    (CELL_COLOR == 1) ? phase_start_c1_i :
-                    (CELL_COLOR == 2) ? phase_start_c2_i :
-                                        phase_start_c3_i;
+
+                assign majority_en_match_w   = majority_en_w && current_phase_i[CELL_COLOR];
+                assign majority_spin_match_w = majority_spin_w[r/2][c/2];
 
                 assign local_node_cfg_we_match_w =
                     local_node_cfg_we_pulse_i &&
@@ -349,16 +371,10 @@ module pbit_array_kings (
                     (node_row_i == r[NODE_TARGET_ROW_WIDTH-1:0]) &&
                     (node_col_i == c[NODE_TARGET_COL_WIDTH-1:0]);
 
-                assign p_up_thr_match_w = p_up_thr_w[r/2][c/2];
-                assign lfsr_rnd_32_match_w = lfsr_rnd_32_w[r/2][c/2];
                 pbit_node u_pbit_node (
                     .clk                        (clk),
                     .rst_n                      (rst_n),
-                    .soft_rstn_i                (glb_soft_rstn_i),
        
-                    .local_start_i              (local_start_w),
-                    .num_majority_i             (num_majority_i),
-
                     .global_cfg_init_spin_i     (global_node_init_spin_w),
                     .global_cfg_clamp_en_i      (global_node_clamp_en_w),
                     .global_cfg_clamp_spin_i    (global_node_clamp_spin_w),
@@ -381,47 +397,12 @@ module pbit_array_kings (
                     .local_node_rcfg_o          (local_node_rcfg_w[r][c]),
 
                     .cfg_node_load_i            (node_load_pulse_i),
-    
-                    .rnd32_i                    (lfsr_rnd_32_match_w),
 
-                    .neighbor_spin_n_i          (nbr_n[r][c]),
-                    .neighbor_spin_ne_i         (nbr_ne[r][c]),
-                    .neighbor_spin_e_i          (nbr_e[r][c]),
-                    .neighbor_spin_se_i         (nbr_se[r][c]),
-                    .neighbor_spin_s_i          (nbr_s[r][c]),
-                    .neighbor_spin_sw_i         (nbr_sw[r][c]),
-                    .neighbor_spin_w_i          (nbr_w[r][c]),
-                    .neighbor_spin_nw_i         (nbr_nw[r][c]),
-    
-                    .edge_valid_n_i             (valid_n[r][c]),
-                    .edge_valid_ne_i            (valid_ne[r][c]),
-                    .edge_valid_e_i             (valid_e[r][c]),
-                    .edge_valid_se_i            (valid_se[r][c]),
-                    .edge_valid_s_i             (valid_s[r][c]),
-                    .edge_valid_sw_i            (valid_sw[r][c]),
-                    .edge_valid_w_i             (valid_w[r][c]),
-                    .edge_valid_nw_i            (valid_nw[r][c]),
-    
-                    .edge_sign_n_i              (sign_n[r][c]),
-                    .edge_sign_ne_i             (sign_ne[r][c]),
-                    .edge_sign_e_i              (sign_e[r][c]),
-                    .edge_sign_se_i             (sign_se[r][c]),
-                    .edge_sign_s_i              (sign_s[r][c]),
-                    .edge_sign_sw_i             (sign_sw[r][c]),
-                    .edge_sign_w_i              (sign_w[r][c]),
-                    .edge_sign_nw_i             (sign_nw[r][c]),
-    
-                    .edge_prob_n_i              (prob_n[r][c]),
-                    .edge_prob_ne_i             (prob_ne[r][c]),
-                    .edge_prob_e_i              (prob_e[r][c]),
-                    .edge_prob_se_i             (prob_se[r][c]),
-                    .edge_prob_s_i              (prob_s[r][c]),
-                    .edge_prob_sw_i             (prob_sw[r][c]),
-                    .edge_prob_w_i              (prob_w[r][c]),
-                    .edge_prob_nw_i             (prob_nw[r][c]),
+                    .bias_sign_o                (bias_sign_w[r][c]),
+                    .bias_prob_o                (bias_prob_w[r][c]),
 
-                    .macsum_o                   (macsum_w[r][c]),
-                    .p_up_thr_i                 (p_up_thr_match_w),
+                    .majority_en_i              (majority_en_match_w),
+                    .majority_spin_i            (majority_spin_match_w),
 
                     .spin_o                     (spin[r][c])
                 );
@@ -431,20 +412,217 @@ module pbit_array_kings (
     endgenerate
 
     //////////////////////////////////////////////////
+    // shared mac module for all p-bits
+    //////////////////////////////////////////////////
+    assign mac_sel_w = current_phase_i;
+    generate
+        for(r = 0; r < SHARED_ROWS; r = r + 1) begin : GEN_MAC_ROW
+            for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_MAC_COL
+                mac u_mac (
+                    .clk        (clk),
+
+                    .mac_sel_i  (mac_sel_w),
+
+                    .rnd32_i    (lfsr_rnd_32_w[r][c]),
+                    
+                    .bias_sign_0_i(bias_sign_w[r*2][c*2]),
+                    .bias_prob_0_i(bias_prob_w[r*2][c*2]),
+
+                    .neighbor_spin_n_0_i  (nbr_n[r*2][c*2]),
+                    .neighbor_spin_ne_0_i (nbr_ne[r*2][c*2]),
+                    .neighbor_spin_e_0_i  (nbr_e[r*2][c*2]),
+                    .neighbor_spin_se_0_i (nbr_se[r*2][c*2]),
+                    .neighbor_spin_s_0_i  (nbr_s[r*2][c*2]),
+                    .neighbor_spin_sw_0_i (nbr_sw[r*2][c*2]),
+                    .neighbor_spin_w_0_i  (nbr_w[r*2][c*2]),
+                    .neighbor_spin_nw_0_i (nbr_nw[r*2][c*2]),
+
+                    .edge_valid_n_0_i     (valid_n[r*2][c*2]),
+                    .edge_valid_ne_0_i    (valid_ne[r*2][c*2]),
+                    .edge_valid_e_0_i     (valid_e[r*2][c*2]),
+                    .edge_valid_se_0_i    (valid_se[r*2][c*2]),
+                    .edge_valid_s_0_i     (valid_s[r*2][c*2]),
+                    .edge_valid_sw_0_i    (valid_sw[r*2][c*2]),
+                    .edge_valid_w_0_i     (valid_w[r*2][c*2]),
+                    .edge_valid_nw_0_i    (valid_nw[r*2][c*2]),
+
+                    .edge_sign_n_0_i      (sign_n[r*2][c*2]),
+                    .edge_sign_ne_0_i     (sign_ne[r*2][c*2]),
+                    .edge_sign_e_0_i      (sign_e[r*2][c*2]),
+                    .edge_sign_se_0_i     (sign_se[r*2][c*2]),
+                    .edge_sign_s_0_i      (sign_s[r*2][c*2]),
+                    .edge_sign_sw_0_i     (sign_sw[r*2][c*2]),
+                    .edge_sign_w_0_i      (sign_w[r*2][c*2]),
+                    .edge_sign_nw_0_i     (sign_nw[r*2][c*2]),  
+
+                    .edge_prob_n_0_i      (prob_n[r*2][c*2]),
+                    .edge_prob_ne_0_i     (prob_ne[r*2][c*2]),
+                    .edge_prob_e_0_i      (prob_e[r*2][c*2]),
+                    .edge_prob_se_0_i     (prob_se[r*2][c*2]),
+                    .edge_prob_s_0_i      (prob_s[r*2][c*2]),
+                    .edge_prob_sw_0_i     (prob_sw[r*2][c*2]),
+                    .edge_prob_w_0_i      (prob_w[r*2][c*2]),
+                    .edge_prob_nw_0_i     (prob_nw[r*2][c*2]),
+
+                    .bias_sign_1_i(bias_sign_w[r*2][c*2+1]),
+                    .bias_prob_1_i(bias_prob_w[r*2][c*2+1]),
+
+                    .neighbor_spin_n_1_i  (nbr_n[r*2][c*2+1]),
+                    .neighbor_spin_ne_1_i (nbr_ne[r*2][c*2+1]),
+                    .neighbor_spin_e_1_i  (nbr_e[r*2][c*2+1]),
+                    .neighbor_spin_se_1_i (nbr_se[r*2][c*2+1]),
+                    .neighbor_spin_s_1_i  (nbr_s[r*2][c*2+1]),
+                    .neighbor_spin_sw_1_i (nbr_sw[r*2][c*2+1]),
+                    .neighbor_spin_w_1_i  (nbr_w[r*2][c*2+1]),
+                    .neighbor_spin_nw_1_i (nbr_nw[r*2][c*2+1]),
+
+                    .edge_valid_n_1_i     (valid_n[r*2][c*2+1]),
+                    .edge_valid_ne_1_i    (valid_ne[r*2][c*2+1]),
+                    .edge_valid_e_1_i     (valid_e[r*2][c*2+1]),
+                    .edge_valid_se_1_i    (valid_se[r*2][c*2+1]),
+                    .edge_valid_s_1_i     (valid_s[r*2][c*2+1]),
+                    .edge_valid_sw_1_i    (valid_sw[r*2][c*2+1]),
+                    .edge_valid_w_1_i     (valid_w[r*2][c*2+1]),
+                    .edge_valid_nw_1_i    (valid_nw[r*2][c*2+1]),
+
+                    .edge_sign_n_1_i      (sign_n[r*2][c*2+1]),
+                    .edge_sign_ne_1_i     (sign_ne[r*2][c*2+1]),
+                    .edge_sign_e_1_i      (sign_e[r*2][c*2+1]),
+                    .edge_sign_se_1_i     (sign_se[r*2][c*2+1]),
+                    .edge_sign_s_1_i      (sign_s[r*2][c*2+1]),
+                    .edge_sign_sw_1_i     (sign_sw[r*2][c*2+1]),
+                    .edge_sign_w_1_i      (sign_w[r*2][c*2+1]),
+                    .edge_sign_nw_1_i     (sign_nw[r*2][c*2+1]),  
+
+                    .edge_prob_n_1_i      (prob_n[r*2][c*2+1]),
+                    .edge_prob_ne_1_i     (prob_ne[r*2][c*2+1]),
+                    .edge_prob_e_1_i      (prob_e[r*2][c*2+1]),
+                    .edge_prob_se_1_i     (prob_se[r*2][c*2+1]),
+                    .edge_prob_s_1_i      (prob_s[r*2][c*2+1]),
+                    .edge_prob_sw_1_i     (prob_sw[r*2][c*2+1]),
+                    .edge_prob_w_1_i      (prob_w[r*2][c*2+1]),
+                    .edge_prob_nw_1_i     (prob_nw[r*2][c*2+1]),       
+
+                    .bias_sign_2_i(bias_sign_w[r*2+1][c*2]),
+                    .bias_prob_2_i(bias_prob_w[r*2+1][c*2]),
+
+                    .neighbor_spin_n_2_i  (nbr_n[r*2+1][c*2]),
+                    .neighbor_spin_ne_2_i (nbr_ne[r*2+1][c*2]),
+                    .neighbor_spin_e_2_i  (nbr_e[r*2+1][c*2]),
+                    .neighbor_spin_se_2_i (nbr_se[r*2+1][c*2]),
+                    .neighbor_spin_s_2_i  (nbr_s[r*2+1][c*2]),
+                    .neighbor_spin_sw_2_i (nbr_sw[r*2+1][c*2]),
+                    .neighbor_spin_w_2_i  (nbr_w[r*2+1][c*2]),
+                    .neighbor_spin_nw_2_i (nbr_nw[r*2+1][c*2]),
+
+                    .edge_valid_n_2_i     (valid_n[r*2+1][c*2]),
+                    .edge_valid_ne_2_i    (valid_ne[r*2+1][c*2]),
+                    .edge_valid_e_2_i     (valid_e[r*2+1][c*2]),
+                    .edge_valid_se_2_i    (valid_se[r*2+1][c*2]),
+                    .edge_valid_s_2_i     (valid_s[r*2+1][c*2]),
+                    .edge_valid_sw_2_i    (valid_sw[r*2+1][c*2]),
+                    .edge_valid_w_2_i     (valid_w[r*2+1][c*2]),
+                    .edge_valid_nw_2_i    (valid_nw[r*2+1][c*2]),
+
+                    .edge_sign_n_2_i      (sign_n[r*2+1][c*2]),
+                    .edge_sign_ne_2_i     (sign_ne[r*2+1][c*2]),
+                    .edge_sign_e_2_i      (sign_e[r*2+1][c*2]),
+                    .edge_sign_se_2_i     (sign_se[r*2+1][c*2]),
+                    .edge_sign_s_2_i      (sign_s[r*2+1][c*2]),
+                    .edge_sign_sw_2_i     (sign_sw[r*2+1][c*2]),
+                    .edge_sign_w_2_i      (sign_w[r*2+1][c*2]),
+                    .edge_sign_nw_2_i     (sign_nw[r*2+1][c*2]),  
+
+                    .edge_prob_n_2_i      (prob_n[r*2+1][c*2]),
+                    .edge_prob_ne_2_i     (prob_ne[r*2+1][c*2]),
+                    .edge_prob_e_2_i      (prob_e[r*2+1][c*2]),
+                    .edge_prob_se_2_i     (prob_se[r*2+1][c*2]),
+                    .edge_prob_s_2_i      (prob_s[r*2+1][c*2]),
+                    .edge_prob_sw_2_i     (prob_sw[r*2+1][c*2]),
+                    .edge_prob_w_2_i      (prob_w[r*2+1][c*2]),
+                    .edge_prob_nw_2_i     (prob_nw[r*2+1][c*2]),         
+
+                    .bias_sign_3_i(bias_sign_w[r*2+1][c*2+1]),
+                    .bias_prob_3_i(bias_prob_w[r*2+1][c*2+1]),
+
+                    .neighbor_spin_n_3_i  (nbr_n[r*2+1][c*2+1]),
+                    .neighbor_spin_ne_3_i (nbr_ne[r*2+1][c*2+1]),
+                    .neighbor_spin_e_3_i  (nbr_e[r*2+1][c*2+1]),
+                    .neighbor_spin_se_3_i (nbr_se[r*2+1][c*2+1]),
+                    .neighbor_spin_s_3_i  (nbr_s[r*2+1][c*2+1]),
+                    .neighbor_spin_sw_3_i (nbr_sw[r*2+1][c*2+1]),
+                    .neighbor_spin_w_3_i  (nbr_w[r*2+1][c*2+1]),
+                    .neighbor_spin_nw_3_i (nbr_nw[r*2+1][c*2+1]),
+
+                    .edge_valid_n_3_i     (valid_n[r*2+1][c*2+1]),
+                    .edge_valid_ne_3_i    (valid_ne[r*2+1][c*2+1]),
+                    .edge_valid_e_3_i     (valid_e[r*2+1][c*2+1]),
+                    .edge_valid_se_3_i    (valid_se[r*2+1][c*2+1]),
+                    .edge_valid_s_3_i     (valid_s[r*2+1][c*2+1]),
+                    .edge_valid_sw_3_i    (valid_sw[r*2+1][c*2+1]),
+                    .edge_valid_w_3_i     (valid_w[r*2+1][c*2+1]),
+                    .edge_valid_nw_3_i    (valid_nw[r*2+1][c*2+1]),
+
+                    .edge_sign_n_3_i      (sign_n[r*2+1][c*2+1]),
+                    .edge_sign_ne_3_i     (sign_ne[r*2+1][c*2+1]),
+                    .edge_sign_e_3_i      (sign_e[r*2+1][c*2+1]),
+                    .edge_sign_se_3_i     (sign_se[r*2+1][c*2+1]),
+                    .edge_sign_s_3_i      (sign_s[r*2+1][c*2+1]),
+                    .edge_sign_sw_3_i     (sign_sw[r*2+1][c*2+1]),
+                    .edge_sign_w_3_i      (sign_w[r*2+1][c*2+1]),
+                    .edge_sign_nw_3_i     (sign_nw[r*2+1][c*2+1]),  
+
+                    .edge_prob_n_3_i      (prob_n[r*2+1][c*2+1]),
+                    .edge_prob_ne_3_i     (prob_ne[r*2+1][c*2+1]),
+                    .edge_prob_e_3_i      (prob_e[r*2+1][c*2+1]),
+                    .edge_prob_se_3_i     (prob_se[r*2+1][c*2+1]),
+                    .edge_prob_s_3_i      (prob_s[r*2+1][c*2+1]),
+                    .edge_prob_sw_3_i     (prob_sw[r*2+1][c*2+1]),
+                    .edge_prob_w_3_i      (prob_w[r*2+1][c*2+1]),
+                    .edge_prob_nw_3_i     (prob_nw[r*2+1][c*2+1]),
+
+                    .macsum_en_i          (mac_en_w),
+                    .macsum_o             (macsum_w[r][c])           
+                );
+            end
+        end
+    endgenerate
+
+    //////////////////////////////////////////////////
     // shared tanh_lut_comb module for all p-bits
     //////////////////////////////////////////////////
-    assign tanh_sel_w = {is_c3_q, is_c2_q, is_c1_q, is_c0_q};
     generate
-        for(r = 0; r < TANH_ROWS; r = r + 1) begin : GEN_TANH_LUT_ROW
-            for(c = 0; c < TANH_COLS; c = c + 1) begin : GEN_TANH_LUT_COL
+        for(r = 0; r < SHARED_ROWS; r = r + 1) begin : GEN_TANH_LUT_ROW
+            for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_TANH_LUT_COL
                 tanh_lut_comb u_tanh_lut_comb (
                     .i0_level_i (i0_level_i),
-                    .h0_i (macsum_w[2*r][2*c]),
-                    .h1_i (macsum_w[2*r][2*c+1]),
-                    .h2_i (macsum_w[2*r+1][2*c]),
-                    .h3_i (macsum_w[2*r+1][2*c+1]),
-                    .tanh_sel_i (tanh_sel_w),
+                    .h_i        (macsum_w[r][c]),
                     .p_up_thr_o (p_up_thr_w[r][c])
+                );
+            end
+        end
+    endgenerate
+
+    //////////////////////////////////////////////////
+    // shared comparator_vote for all p-bits
+    //////////////////////////////////////////////////
+    generate
+        for(r = 0; r < SHARED_ROWS; r = r + 1) begin : GEN_COMPARATOR_VOTE_ROW
+            for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_COMPARATOR_VOTE_COL
+                comparator_vote u_comparator_vote (
+                    .clk        (clk),
+                    .rst_n      (rst_n),
+                    .soft_rstn_i(glb_soft_rstn_i),
+
+                    .rnd32_i    (lfsr_rnd_32_w[r][c]),
+
+                    .p_up_thr_i (p_up_thr_w[r][c]),
+
+                    .spin_sum_en_i  (spin_sum_en_w),
+                    .majority_en_i  (majority_en_w),
+                    .num_majority_i (num_majority_i),
+
+                    .majority_spin_o (majority_spin_w[r][c])
                 );
             end
         end
@@ -453,10 +631,10 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // shared lfsr32_rng32 module for all p-bits
     // ------------------------------------------------------------
-    assign lfsr_en_w = is_c0_q | is_c1_q | is_c2_q | is_c3_q;
+    assign lfsr_en_w = |current_phase_i;
     generate
-        for(r = 0; r < SEED_ROWS; r = r + 1) begin : GEN_LFSR32_R
-            for(c = 0; c < SEED_COLS; c = c + 1) begin : GEN_LFSR32_C
+        for(r = 0; r < SHARED_ROWS; r = r + 1) begin : GEN_LFSR32_R
+            for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_LFSR32_C
                 logic local_node_seed_we_match_w;
                 logic local_node_seed_clr_pulse_match_w;
 
@@ -489,6 +667,7 @@ module pbit_array_kings (
             end
         end
     endgenerate
+
     // ------------------------------------------------------------
     // Horizontal edges:
     // A=(r,c), B=(r,c+1)
@@ -516,7 +695,6 @@ module pbit_array_kings (
                 edge_reg_coupler u_edge_h (
                     .clk                  (clk),
                     .rst_n                (rst_n),
-                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_h_w),
                     .cfg_clr_pulse_i      (cfg_clr_h_w),
@@ -568,8 +746,6 @@ module pbit_array_kings (
                 edge_reg_coupler u_edge_v (
                     .clk                  (clk),
                     .rst_n                (rst_n),
-                    .soft_rstn_i          (glb_soft_rstn_i),
-
                     .cfg_we_i             (cfg_we_v_w),
                     .cfg_clr_pulse_i      (cfg_clr_v_w),
                     .cfg_prob_i           (cfg_edge_prob_i),
@@ -620,7 +796,6 @@ module pbit_array_kings (
                 edge_reg_coupler u_edge_dse (
                     .clk                  (clk),
                     .rst_n                (rst_n),
-                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_dse_w),
                     .cfg_clr_pulse_i      (cfg_clr_dse_w),
@@ -672,7 +847,6 @@ module pbit_array_kings (
                 edge_reg_coupler u_edge_dsw (
                     .clk                  (clk),
                     .rst_n                (rst_n),
-                    .soft_rstn_i          (glb_soft_rstn_i),
 
                     .cfg_we_i             (cfg_we_dsw_w),
                     .cfg_clr_pulse_i      (cfg_clr_dsw_w),
@@ -731,8 +905,8 @@ module pbit_array_kings (
     // Node readback
     // ------------------------------------------------------------
     generate
-        for(r = 0; r < SEED_ROWS; r++) begin : GEN_NODE_SEED_RDATA_ROW
-            for(c = 0; c < SEED_COLS; c++) begin : GEN_NODE_SEED_RDATA_COL
+        for(r = 0; r < SHARED_ROWS; r++) begin : GEN_NODE_SEED_RDATA_ROW
+            for(c = 0; c < SHARED_COLS; c++) begin : GEN_NODE_SEED_RDATA_COL
                 assign local_node_rseed_w[r][c] = lfsr_rnd_32_w[r][c];
             end
         end
@@ -748,7 +922,7 @@ module pbit_array_kings (
                 if(node_row_i < ROWS)
                     node_rdata_cfg_d  = row_node_cfg_i[node_row_i];
                 else node_rdata_cfg_d = {NODE_CFG_W{1'b0}};
-                if(node_row_i < SEED_ROWS)
+                if(node_row_i < SHARED_ROWS)
                     node_rdata_seed_d = row_node_seed_i[node_row_i];
                 else node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
             end
@@ -756,7 +930,7 @@ module pbit_array_kings (
                 if(node_row_i < ROWS && node_col_i < COLS)
                     node_rdata_cfg_d  = local_node_rcfg_w[node_row_i][node_col_i];
                 else node_rdata_cfg_d = {NODE_CFG_W{1'b0}};
-                if(node_row_i < SEED_ROWS && node_col_i < SEED_COLS)
+                if(node_row_i < SHARED_ROWS && node_col_i < SHARED_COLS)
                     node_rdata_seed_d = local_node_rseed_w[node_row_i][node_col_i];
                 else node_rdata_seed_d = {NODE_SEED_WIDTH{1'b0}};
             end
@@ -821,160 +995,33 @@ module pbit_array_kings (
     );
     // ------------------------------------------------------------
     // Done signal counter
-    // 2*num_majority_act+2
+    // num_majority_act+1+2
     // ------------------------------------------------------------
-    assign cnt_max        = {num_majority_i, 1'b0} + 2 + 1;
+    assign cnt_max        = (num_majority_i + 1) + 1 + 2 - 1;
 
-    assign is_c0_d        = phase_start_c0_i? 1'b1:
-                            done_c0_d? 1'b0:
-                            is_c0_q;
-
-    assign is_c1_d        = phase_start_c1_i? 1'b1:
-                            done_c1_d? 1'b0:
-                            is_c1_q;
-
-    assign is_c2_d        = phase_start_c2_i? 1'b1:
-                            done_c2_d? 1'b0:
-                            is_c2_q;
-
-    assign is_c3_d        = phase_start_c3_i? 1'b1:
-                            done_c3_d? 1'b0:
-                            is_c3_q;
-
-    assign done_c0_cnt_d  = (done_c0_cnt_q == cnt_max)? 0:
-                            (phase_start_c0_i || |done_c0_cnt_q)? done_c0_cnt_q + 1:
-                            done_c0_cnt_q;
-    assign done_c0_cnt_en = (phase_start_c0_i || |done_c0_cnt_q);     
-    assign done_c0_d      = done_c0_cnt_q == cnt_max; 
-
-    assign done_c1_cnt_d  = (done_c1_cnt_q == cnt_max)? 0:
-                            (phase_start_c1_i || |done_c1_cnt_q)? done_c1_cnt_q + 1:
-                            done_c1_cnt_q;
-    assign done_c1_cnt_en = (phase_start_c1_i || |done_c1_cnt_q);     
-    assign done_c1_d      = done_c1_cnt_q == cnt_max;  
-
-    assign done_c2_cnt_d  = (done_c2_cnt_q == cnt_max)? 0:
-                            (phase_start_c2_i || |done_c2_cnt_q)? done_c2_cnt_q + 1:
-                            done_c2_cnt_q;
-    assign done_c2_cnt_en = (phase_start_c2_i || |done_c2_cnt_q);     
-    assign done_c2_d      = done_c2_cnt_q == cnt_max;  
-
-    assign done_c3_cnt_d  = (done_c3_cnt_q == cnt_max)? 0:
-                            (phase_start_c3_i || |done_c3_cnt_q)? done_c3_cnt_q + 1:
-                            done_c3_cnt_q;
-    assign done_c3_cnt_en = (phase_start_c3_i || |done_c3_cnt_q);     
-    assign done_c3_d      = done_c3_cnt_q == cnt_max;       
+    assign done_cnt_d  = (done_cnt_q == cnt_max)? 0:
+                         (phase_start_i || |done_cnt_q)? done_cnt_q + 1:
+                         done_cnt_q;
+    assign done_cnt_en = (phase_start_i || |done_cnt_q);     
+    assign done_d      = done_cnt_q == cnt_max; 
 
     dffsre #(.WIDTH(NUM_MAJORITY_WIDTH+2)
-    ) done_c0_cnt_ff (
+    ) done_cnt_ff (
         .clk(clk),
         .rst_n(rst_n),
         .soft_rstn_i(glb_soft_rstn_i),
-        .en_i(done_c0_cnt_en),
-        .d_i(done_c0_cnt_d),
-        .q_o(done_c0_cnt_q)
-    );  
-
-    dffsre #(.WIDTH(NUM_MAJORITY_WIDTH+2)
-    ) done_c1_cnt_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .en_i(done_c1_cnt_en),
-        .d_i(done_c1_cnt_d),
-        .q_o(done_c1_cnt_q)
-    );  
-
-    dffsre #(.WIDTH(NUM_MAJORITY_WIDTH+2)
-    ) done_c2_cnt_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .en_i(done_c2_cnt_en),
-        .d_i(done_c2_cnt_d),
-        .q_o(done_c2_cnt_q)
-    );  
-
-    dffsre #(.WIDTH(NUM_MAJORITY_WIDTH+2)
-    ) done_c3_cnt_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .en_i(done_c3_cnt_en),
-        .d_i(done_c3_cnt_d),
-        .q_o(done_c3_cnt_q)
+        .en_i(done_cnt_en),
+        .d_i(done_cnt_d),
+        .q_o(done_cnt_q)
     );  
 
     dffsr #(.WIDTH(1)
-    ) done_c0_ff (
+    ) done_ff (
         .clk(clk),
         .rst_n(rst_n),
         .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(done_c0_d),
-        .q_o(done_c0_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) done_c1_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(done_c1_d),
-        .q_o(done_c1_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) done_c2_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(done_c2_d),
-        .q_o(done_c2_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) done_c3_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(done_c3_d),
-        .q_o(done_c3_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) is_c0_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(is_c0_d),
-        .q_o(is_c0_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) is_c1_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(is_c1_d),
-        .q_o(is_c1_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) is_c2_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(is_c2_d),
-        .q_o(is_c2_q)
-    );
-
-    dffsr #(.WIDTH(1)
-    ) is_c3_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(glb_soft_rstn_i),
-        .d_i(is_c3_d),
-        .q_o(is_c3_q)
+        .d_i(done_d),
+        .q_o(done_q)
     );
 endmodule
 `endif

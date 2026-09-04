@@ -60,9 +60,9 @@ module pbit_reg_block(
     output logic                                    global_node_seed_vld_o,
  
     output logic [NODE_CFG_W-1:0]                   row_node_cfg_o[ROWS],
-    output logic [NODE_SEED_WIDTH-1:0]              row_node_seed_o[SEED_ROWS],
+    output logic [NODE_SEED_WIDTH-1:0]              row_node_seed_o[SHARED_ROWS],
     output logic [ROWS-1:0]                         row_node_cfg_vld_o,
-    output logic [SEED_ROWS-1:0]                    row_node_seed_vld_o,
+    output logic [SHARED_ROWS-1:0]                  row_node_seed_vld_o,
  
     output logic                                    local_node_cfg_we_pulse_o,
     output logic                                    local_node_cfg_clr_pulse_o,
@@ -147,10 +147,10 @@ module pbit_reg_block(
 
     logic [NODE_CFG_W-1:0]             row_node_cfg_q  [0:ROWS-1], row_node_cfg_d[0:ROWS-1];
     logic                              row_node_cfg_en [0:ROWS-1];
-    logic [NODE_SEED_WIDTH-1:0]        row_node_seed_q [0:SEED_ROWS-1], row_node_seed_d[0:SEED_ROWS-1];
-    logic                              row_node_seed_en[0:SEED_ROWS-1];
+    logic [NODE_SEED_WIDTH-1:0]        row_node_seed_q [0:SHARED_ROWS-1], row_node_seed_d[0:SHARED_ROWS-1];
+    logic                              row_node_seed_en[0:SHARED_ROWS-1];
     logic [ROWS-1:0]                   row_node_cfg_vld_q, row_node_cfg_vld_d;
-    logic [SEED_ROWS-1:0]              row_node_seed_vld_q, row_node_seed_vld_d;
+    logic [SHARED_ROWS-1:0]              row_node_seed_vld_q, row_node_seed_vld_d;
 
     assign global_node_cfg_o  = global_node_cfg_q;
     assign global_node_seed_o = global_node_seed_q;
@@ -164,7 +164,7 @@ module pbit_reg_block(
         end
     endgenerate
     generate
-        for (g = 0; g < SEED_ROWS; g = g + 1) begin : GEN_ROW_NODE_SEED
+        for (g = 0; g < SHARED_ROWS; g = g + 1) begin : GEN_ROW_NODE_SEED
             assign row_node_seed_o[g] = row_node_seed_q[g];
         end
     endgenerate
@@ -357,13 +357,13 @@ module pbit_reg_block(
     function automatic logic node_seed_target_row_valid(
         input [NODE_TARGET_ROW_WIDTH-1:0] row
     );
-        node_seed_target_row_valid = (row < SEED_ROWS[NODE_TARGET_ROW_WIDTH-1:0]);
+        node_seed_target_row_valid = (row < SHARED_ROWS[NODE_TARGET_ROW_WIDTH-1:0]);
     endfunction
 
     function automatic logic node_seed_target_col_valid(
         input [NODE_TARGET_COL_WIDTH-1:0] col
     );
-        node_seed_target_col_valid = (col < SEED_COLS[NODE_TARGET_COL_WIDTH-1:0]);
+        node_seed_target_col_valid = (col < SHARED_COLS[NODE_TARGET_COL_WIDTH-1:0]);
     endfunction
 
     function automatic logic edge_target_type_valid(
@@ -706,7 +706,7 @@ module pbit_reg_block(
     endgenerate
 
     generate
-        for (g = 0; g < SEED_ROWS; g = g + 1)begin : ROW_NODE_SEED
+        for (g = 0; g < SHARED_ROWS; g = g + 1)begin : ROW_NODE_SEED
             logic row_node_seed_match_w;
             assign row_node_seed_match_w  = (node_target_q[TARGET_MODE_PACKED_MSB:TARGET_MODE_PACKED_LSB] == TARGET_MODE_ROW) && (node_target_q[NODE_TARGET_ROW_PACKED_MSB:NODE_TARGET_ROW_PACKED_LSB] == g);
             assign row_node_seed_d[g]     = node_seed_q[NODE_SEED_PACKED_MSB:NODE_SEED_PACKED_LSB];
@@ -1086,7 +1086,7 @@ module pbit_reg_block(
     endgenerate
 
     generate
-        for(g = 0; g < SEED_ROWS; g = g + 1) begin : ROW_NODE_SEED_FF
+        for(g = 0; g < SHARED_ROWS; g = g + 1) begin : ROW_NODE_SEED_FF
             dffe #(.WIDTH(NODE_SEED_WIDTH)
             ) row_node_seed_ff(
                 .clk (clk),

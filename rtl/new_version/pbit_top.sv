@@ -40,9 +40,9 @@ module pbit_top (
     logic                                   global_node_seed_vld_w;
 
     logic [NODE_CFG_W-1:0]                  row_node_cfg_w[ROWS];
-    logic [NODE_SEED_WIDTH-1:0]             row_node_seed_w[SEED_ROWS];
+    logic [NODE_SEED_WIDTH-1:0]             row_node_seed_w[SHARED_ROWS];
     logic [ROWS-1:0]                        row_node_cfg_vld_w;
-    logic [SEED_ROWS-1:0]                   row_node_seed_vld_w;
+    logic [SHARED_ROWS-1:0]                 row_node_seed_vld_w;
 
     logic                                   local_node_cfg_we_pulse_w;
     logic                                   local_node_cfg_clr_pulse_w;
@@ -78,14 +78,17 @@ module pbit_top (
     logic                                   all_done_c1_w;
     logic                                   all_done_c2_w;
     logic                                   all_done_c3_w;
+    logic                                   phase_start_w;
     logic                                   phase_start_c0_w;
     logic                                   phase_start_c1_w;
     logic                                   phase_start_c2_w;
     logic                                   phase_start_c3_w;
+    logic [3:0]                             current_phase_w;
 
     assign uart_rx_w = uart_rx_i;
     assign uart_tx_o = uart_tx_w;
-
+    assign phase_start_w = phase_start_c0_w | phase_start_c1_w | phase_start_c2_w | phase_start_c3_w;
+    
     pbit_uart_reg_subsystem u_uart_reg_subsystem(
         .clk(clk),
         .rst_n(rst_n),
@@ -160,10 +163,9 @@ module pbit_top (
         .clk                    (clk),
         .rst_n                  (rst_n),
   
-        .phase_start_c0_i       (phase_start_c0_w),
-        .phase_start_c1_i       (phase_start_c1_w),
-        .phase_start_c2_i       (phase_start_c2_w),
-        .phase_start_c3_i       (phase_start_c3_w),
+        .phase_start_i          (phase_start_w),
+
+        .current_phase_i        (current_phase_w),
 
         .i0_level_i             (i0_level_w),
 
@@ -245,6 +247,8 @@ module pbit_top (
         .phase_start_c2_o     (phase_start_c2_w),
         .phase_start_c3_o     (phase_start_c3_w),
    
+        .current_phase_o      (current_phase_w),
+
         .i0_level_o           (i0_level_w),
    
         .run_busy_o           (run_busy_w),

@@ -4,7 +4,6 @@ import pbit_pkg::*;
 module edge_reg_coupler (
     input  logic       clk,
     input  logic       rst_n,
-    input  logic       soft_rstn_i,
     // ------------------------------------------------------------
     // Configuration / initialization interface
     // Only used during CONFIG phase.
@@ -73,11 +72,10 @@ module edge_reg_coupler (
         .q_o(edge_sign_q)
     );
 
-    dffsr #(.WIDTH(EDGE_CFG_EDGE_VALID_WIDTH)
+    dffr #(.WIDTH(EDGE_CFG_EDGE_VALID_WIDTH)
     ) valid_ff (
         .clk(clk),
         .rst_n(rst_n),
-        .soft_rstn_i(soft_rstn_i),
         .d_i(valid_d),
         .q_o(valid_q)
     );  

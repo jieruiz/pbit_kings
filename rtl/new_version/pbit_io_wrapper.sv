@@ -1,6 +1,6 @@
 `ifndef PBIT_IO_WRAPPER_SV
 `define PBIT_IO_WRAPPER_SV
-
+import pbit_pkg::*;
 module pbit_io_wrapper (
     input  wire pad_clk_i,
     input  wire pad_rst_n_i,
@@ -18,8 +18,8 @@ module pbit_io_wrapper (
 
     // Fixed configuration: 25 MHz reference * 32 / 2 = 400 MHz core clock.
     // Hold pad_rst_n_i low until all PLL supplies and REFCLK are stable.
-    localparam int unsigned PLL_WAIT_CYCLES = 375; // 15 us at 25 MHz
-    localparam int unsigned PLL_WAIT_WIDTH = $clog2(PLL_WAIT_CYCLES);
+    localparam int unsigned PLL_WAIT_CYCLES = REF_CLK_FREQ_HZ/1_000_000*15; // 15 us at 25 MHz
+    localparam int unsigned PLL_WAIT_WIDTH  = $clog2(PLL_WAIT_CYCLES);
 
     logic ref_clk;
     logic ref_rst_n;

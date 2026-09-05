@@ -6,7 +6,7 @@ package pbit_pkg;
     parameter int COLS = 40;
     parameter int SHARED_ROWS = (ROWS+1)/2;
     parameter int SHARED_COLS = (COLS+1)/2;
-    parameter int CLK_FREQ_HZ = 100_000_000;
+    parameter int CLK_FREQ_HZ = 400_000_000;
     parameter int BAUD_RATE = 10_000_000;
     parameter int N_SPIN = ROWS * COLS;
     parameter int SNAPSHOT_WIDTH = 320;

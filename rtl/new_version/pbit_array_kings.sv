@@ -94,6 +94,7 @@ module pbit_array_kings (
     // AREA_OPT_TANH_SHARED: Separate generate indices create the fixed 2x2 regional bank topology.
     genvar tanh_qr;
     genvar tanh_qc;
+    genvar tanh_h;
 
     // ------------------------------------------------------------
     // Snapshot Readback.
@@ -242,7 +243,8 @@ module pbit_array_kings (
     localparam int TANH_QUADRANT_ROW_SIZE = (SHARED_ROWS + 1) / 2;
     localparam int TANH_QUADRANT_COL_SIZE = (SHARED_COLS + 1) / 2;
     // AREA_OPT_TANH_SHARED: Each of the four quadrants owns ten positive-|h| threshold words.
-    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_w [0:1][0:1][0:9];
+    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_d [0:1][0:1][0:9];
+    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_q [0:1][0:1][0:9];
     logic [LUT_WIDTH-1:0]           p_up_thr_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
 
     // ------------------------------------------------------------
@@ -613,8 +615,20 @@ module pbit_array_kings (
             for (tanh_qc = 0; tanh_qc < 2; tanh_qc = tanh_qc + 1) begin : GEN_TANH_BANK_QUAD_C
                 tanh_threshold_bank u_tanh_threshold_bank (
                     .i0_level_i       (i0_level_i),
-                    .pos_thr_by_abs_o (tanh_pos_thr_by_abs_w[tanh_qr][tanh_qc])
+                    .pos_thr_by_abs_o (tanh_pos_thr_by_abs_d[tanh_qr][tanh_qc])
                 );
+
+                // TIMING_OPT_TANH_BANK_REG: Break the round-to-vote path after each regional LUT bank.
+                // The threshold table is registered continuously because i0 changes only at round boundaries.
+                for (tanh_h = 0; tanh_h < 10; tanh_h = tanh_h + 1) begin : GEN_TANH_BANK_THR_FF
+                    dff #(
+                        .WIDTH(LUT_WIDTH)
+                    ) u_tanh_threshold_ff (
+                        .clk (clk),
+                        .d_i (tanh_pos_thr_by_abs_d[tanh_qr][tanh_qc][tanh_h]),
+                        .q_o (tanh_pos_thr_by_abs_q[tanh_qr][tanh_qc][tanh_h])
+                    );
+                end
             end
         end
     endgenerate
@@ -625,7 +639,7 @@ module pbit_array_kings (
             for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_TANH_LUT_COL
                 tanh_threshold_select u_tanh_threshold_select (
                     .h_i              (macsum_w[r][c]),
-                    .pos_thr_by_abs_i (tanh_pos_thr_by_abs_w[r / TANH_QUADRANT_ROW_SIZE]
+                    .pos_thr_by_abs_i (tanh_pos_thr_by_abs_q[r / TANH_QUADRANT_ROW_SIZE]
                                                                  [c / TANH_QUADRANT_COL_SIZE]),
                     .p_up_thr_o       (p_up_thr_w[r][c])
                 );

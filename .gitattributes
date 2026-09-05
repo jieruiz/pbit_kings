@@ -1,3 +1,4 @@
+.gitattributes text eol=lf
 *.sv text eol=lf
 *.svh text eol=lf
 *.v text eol=lf
@@ -6,3 +7,4 @@
 *.json text eol=lf
 *.txt text eol=lf
 *.sh text eol=lf
+*.sbatch text eol=lf

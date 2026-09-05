@@ -4,7 +4,7 @@
   "hardware": {
     "kings_rows": 20,
     "kings_cols": 22,
-    "rtl_cols": 40
+    "rtl_cols": 80
   },
   "pattern": {
     "grid_rows": 20,

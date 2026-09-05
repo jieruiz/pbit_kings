@@ -101,7 +101,7 @@ module pbit_reg_block(
     // -------------------------------------------------------------------------
     // Node staging registers.
     // -------------------------------------------------------------------------
-    logic [NODE_TARGET_PACKED_WIDTH-1:0] node_target_q, node_target_d;// target_mode(2bit) + row(6bit) + col(6bit)
+    logic [NODE_TARGET_PACKED_WIDTH-1:0] node_target_q, node_target_d;// target_mode + parameterized row/column addresses
     logic                                node_target_en;
     logic [NODE_CFG_PACKED_WIDTH-1:0]    node_cfg_q, node_cfg_d;// init_valid(1bit) + clamp_valid(1bit) + bias_valid(1bit)
                                                    // + init_spin(1bit) + clamp_en(1bit) + clamp_spin(1bit) + bias_sign(1bit) + bias_prob(4bit)

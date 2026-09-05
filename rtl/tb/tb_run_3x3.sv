@@ -304,13 +304,17 @@ module tb;
         seed_col = col / 2;
         seed = 32'h3000_0001 + (seed_row * 16) + seed_col;
 
-        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, row[5:0], col[5:0]), "node target");
+        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL,
+                                                  NODE_TARGET_ROW_WIDTH'(row),
+                                                  NODE_TARGET_COL_WIDTH'(col)), "node target");
         write_reg(A_NODE_CFG, pack_node_cfg(spin_value, 1'b1, spin_value), "node cfg");
         write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
         repeat (2) @(posedge clk);
 
         // Shared LFSR seeds are addressed by 2x2 tile coordinate.
-        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, seed_row[5:0], seed_col[5:0]), "node seed target");
+        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL,
+                                                  NODE_TARGET_ROW_WIDTH'(seed_row),
+                                                  NODE_TARGET_COL_WIDTH'(seed_col)), "node seed target");
         write_reg(A_NODE_SEED, seed, "node seed");
         write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node seed apply");
         repeat (2) @(posedge clk);
@@ -321,7 +325,9 @@ module tb;
         input int unsigned row,
         input int unsigned col
     );
-        write_reg(A_EDGE_TARGET, pack_edge_target(edge_type, row[5:0], col[5:0]), "edge target");
+        write_reg(A_EDGE_TARGET, pack_edge_target(edge_type,
+                                                  EDGE_TARGET_ROW_WIDTH'(row),
+                                                  EDGE_TARGET_COL_WIDTH'(col)), "edge target");
         write_reg(A_EDGE_CFG, pack_edge_cfg(7'h10, 1'b1, 1'b1), "edge cfg");
         write_reg(A_EDGE_CMD, pack_edge_cmd(1'b1, 1'b0, 1'b0), "edge apply");
         repeat (2) @(posedge clk);
@@ -452,26 +458,29 @@ module tb;
         end
     endtask
 
+    function automatic logic [15:0] spin_rdata_addr(input int unsigned idx);
+        spin_rdata_addr = A_SPIN_RDATA0 + (idx * 4);
+    endfunction
+
     task automatic check_3x3_snapshot();
-        logic [31:0] spin0;
-        logic [31:0] spin1;
-        logic [31:0] spin2;
+        logic [31:0] snapshot_words [SPIN_RDATA_REG_NUM];
         logic actual;
         logic expected;
+        int unsigned flat_idx;
+        int unsigned word_idx;
+        int unsigned bit_idx;
 
-        read_reg(A_SPIN_RDATA0, spin0, "spin rdata0");
-        read_reg(A_SPIN_RDATA1, spin1, "spin rdata1");
-        read_reg(A_SPIN_RDATA2, spin2, "spin rdata2");
+        for (int read_word_idx = 0; read_word_idx < SPIN_RDATA_REG_NUM; read_word_idx++) begin
+            read_reg(spin_rdata_addr(read_word_idx), snapshot_words[read_word_idx], "spin rdata");
+        end
 
         for (int r = 0; r < 3; r++) begin
             for (int c = 0; c < 3; c++) begin
                 expected = clamp_pattern(r, c);
-                case (r)
-                    0: actual = spin0[c];
-                    1: actual = spin1[8 + c];
-                    2: actual = spin2[16 + c];
-                    default: actual = 1'b0;
-                endcase
+                flat_idx = (r * COLS) + c;
+                word_idx = flat_idx / 32;
+                bit_idx = flat_idx % 32;
+                actual = snapshot_words[word_idx][bit_idx];
 
                 if (actual !== expected) begin
                     error_count++;

@@ -91,9 +91,9 @@ module pbit_array_kings (
 
     genvar r;
     genvar c;
-    // AREA_OPT_TANH_SHARED: Separate generate indices create the fixed 2x2 regional bank topology.
-    genvar tanh_qr;
-    genvar tanh_qc;
+    // Separate generate indices create the parameterized regional bank topology.
+    genvar tanh_bank_r;
+    genvar tanh_bank_c;
     genvar tanh_h;
 
     // ------------------------------------------------------------
@@ -157,7 +157,10 @@ module pbit_array_kings (
     logic [NODE_CFG_BIAS_SIGN_WIDTH-1:0] bias_sign_w[ROWS][COLS];
     logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_prob_w[ROWS][COLS];
     logic                                spin [ROWS][COLS];
+    localparam int SNAPSHOT_STORAGE_WIDTH = SPIN_ADDR_MAX * SNAPSHOT_WIDTH;
+    localparam int SNAPSHOT_PAD_WIDTH = SNAPSHOT_STORAGE_WIDTH - N_SPIN;
     logic [N_SPIN-1:0]                   spin_flat;
+    logic [SNAPSHOT_STORAGE_WIDTH-1:0]   spin_flat_padded;
     logic [SNAPSHOT_WIDTH-1:0]           spin_flat_reshape[SPIN_ADDR_MAX];
 
     // ------------------------------------------------------------
@@ -239,12 +242,10 @@ module pbit_array_kings (
     // ------------------------------------------------------------
     // tanh LUT wires
     // ------------------------------------------------------------
-    // AREA_OPT_TANH_SHARED: Split the shared tile grid into two row regions and two column regions.
-    localparam int TANH_QUADRANT_ROW_SIZE = (SHARED_ROWS + 1) / 2;
-    localparam int TANH_QUADRANT_COL_SIZE = (SHARED_COLS + 1) / 2;
-    // AREA_OPT_TANH_SHARED: Each of the four quadrants owns ten positive-|h| threshold words.
-    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_d [0:1][0:1][0:9];
-    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_q [0:1][0:1][0:9];
+    // Each regional bank owns ten positive-|h| threshold words.  Bank counts
+    // are derived from ROWS/COLS while keeping fanout near 10x10 shared tiles.
+    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_d [0:TANH_BANK_ROWS-1][0:TANH_BANK_COLS-1][0:9];
+    logic [LUT_WIDTH-1:0]           tanh_pos_thr_by_abs_q [0:TANH_BANK_ROWS-1][0:TANH_BANK_COLS-1][0:9];
     logic [LUT_WIDTH-1:0]           p_up_thr_w[0:SHARED_ROWS-1][0:SHARED_COLS-1];
 
     // ------------------------------------------------------------
@@ -609,13 +610,13 @@ module pbit_array_kings (
         end
     endgenerate
 
-    // AREA_OPT_TANH_SHARED: Four regional banks limit each threshold net to one quadrant of the array.
+    // Regional banks limit each registered threshold net to one tile region.
     generate
-        for (tanh_qr = 0; tanh_qr < 2; tanh_qr = tanh_qr + 1) begin : GEN_TANH_BANK_QUAD_R
-            for (tanh_qc = 0; tanh_qc < 2; tanh_qc = tanh_qc + 1) begin : GEN_TANH_BANK_QUAD_C
+        for (tanh_bank_r = 0; tanh_bank_r < TANH_BANK_ROWS; tanh_bank_r = tanh_bank_r + 1) begin : GEN_TANH_BANK_R
+            for (tanh_bank_c = 0; tanh_bank_c < TANH_BANK_COLS; tanh_bank_c = tanh_bank_c + 1) begin : GEN_TANH_BANK_C
                 tanh_threshold_bank u_tanh_threshold_bank (
                     .i0_level_i       (i0_level_i),
-                    .pos_thr_by_abs_o (tanh_pos_thr_by_abs_d[tanh_qr][tanh_qc])
+                    .pos_thr_by_abs_o (tanh_pos_thr_by_abs_d[tanh_bank_r][tanh_bank_c])
                 );
 
                 // TIMING_OPT_TANH_BANK_REG: Break the round-to-vote path after each regional LUT bank.
@@ -625,22 +626,22 @@ module pbit_array_kings (
                         .WIDTH(LUT_WIDTH)
                     ) u_tanh_threshold_ff (
                         .clk (clk),
-                        .d_i (tanh_pos_thr_by_abs_d[tanh_qr][tanh_qc][tanh_h]),
-                        .q_o (tanh_pos_thr_by_abs_q[tanh_qr][tanh_qc][tanh_h])
+                        .d_i (tanh_pos_thr_by_abs_d[tanh_bank_r][tanh_bank_c][tanh_h]),
+                        .q_o (tanh_pos_thr_by_abs_q[tanh_bank_r][tanh_bank_c][tanh_h])
                     );
                 end
             end
         end
     endgenerate
 
-    // AREA_OPT_TANH_SHARED: Bind every tile to its elaboration-time quadrant, keeping maximum bank fanout near 100.
+    // Bind every tile to its elaboration-time bank, keeping maximum bank fanout near 100.
     generate
         for(r = 0; r < SHARED_ROWS; r = r + 1) begin : GEN_TANH_LUT_ROW
             for(c = 0; c < SHARED_COLS; c = c + 1) begin : GEN_TANH_LUT_COL
                 tanh_threshold_select u_tanh_threshold_select (
                     .h_i              (macsum_w[r][c]),
-                    .pos_thr_by_abs_i (tanh_pos_thr_by_abs_q[r / TANH_QUADRANT_ROW_SIZE]
-                                                                 [c / TANH_QUADRANT_COL_SIZE]),
+                    .pos_thr_by_abs_i (tanh_pos_thr_by_abs_q[r / TANH_BANK_TILE_ROWS]
+                                                                 [c / TANH_BANK_TILE_COLS]),
                     .p_up_thr_o       (p_up_thr_w[r][c])
                 );
             end
@@ -892,8 +893,15 @@ module pbit_array_kings (
     // Snapshot Readback register's d port logic.
     // ------------------------------------------------------------
     generate
+        if (SNAPSHOT_PAD_WIDTH == 0) begin : GEN_SNAPSHOT_NO_PAD
+            assign spin_flat_padded = spin_flat;
+        end else begin : GEN_SNAPSHOT_PAD
+            assign spin_flat_padded = {{SNAPSHOT_PAD_WIDTH{1'b0}}, spin_flat};
+        end
+    endgenerate
+    generate
         for(r = 0; r < SPIN_ADDR_MAX; r++) begin : GEN_SPIN_FLAT_RESHAPE
-            assign spin_flat_reshape[r] = spin_flat[r*SNAPSHOT_WIDTH+:SNAPSHOT_WIDTH];
+            assign spin_flat_reshape[r] = spin_flat_padded[r*SNAPSHOT_WIDTH+:SNAPSHOT_WIDTH];
         end
     endgenerate
     assign snapshot_flat_d = snapshot_addr_i < SPIN_ADDR_MAX? spin_flat_reshape[snapshot_addr_i] : {SNAPSHOT_WIDTH{1'b0}};

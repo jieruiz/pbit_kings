@@ -3,9 +3,13 @@
 import pbit_pkg::*;
 
 module tb;
+    `include "tb_w50_maxcut_data.svh"
+
     localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
-    localparam int unsigned W50_SNAPSHOT_PAGES = 3;
+    localparam int unsigned W50_SNAPSHOT_PAGES =
+        ((((W50_KINGS_ROWS - 1) * COLS) + W50_KINGS_COLS) + SNAPSHOT_WIDTH - 1) /
+         SNAPSHOT_WIDTH;
     localparam int unsigned W50_MIN_RUN_POLL_LIMIT = 1200;
 
     localparam logic [7:0] OP_WRITE = 8'h01;
@@ -23,7 +27,7 @@ module tb;
     logic uart_rx_i;
     logic uart_tx_o;
     int unsigned error_count;
-    logic [31:0] snapshot_words [W50_SNAPSHOT_PAGES][SPIN_RDATA_REG_NUM];
+    logic [31:0] snapshot_words [W50_SNAPSHOT_PAGES * SPIN_RDATA_REG_NUM];
 
     pbit_top u_pbit_top (
         .clk       (clk),
@@ -31,8 +35,6 @@ module tb;
         .uart_rx_i (uart_rx_i),
         .uart_tx_o (uart_tx_o)
     );
-
-    `include "tb_w50_maxcut_data.svh"
 
     localparam int unsigned W50_PROGRESS_PRINT_STEP = 500;
 
@@ -456,17 +458,13 @@ module tb;
 
     function automatic logic physical_spin_snapshot(input int unsigned phys_idx);
         int unsigned flat_idx;
-        int unsigned page;
-        int unsigned page_bit;
-        int unsigned word;
+        int unsigned word_idx;
         int unsigned bit_idx;
         begin
             flat_idx = (w50_phys_row[phys_idx] * COLS) + w50_phys_col[phys_idx];
-            page = flat_idx / SNAPSHOT_WIDTH;
-            page_bit = flat_idx % SNAPSHOT_WIDTH;
-            word = page_bit / 32;
-            bit_idx = page_bit % 32;
-            physical_spin_snapshot = snapshot_words[page][word][bit_idx];
+            word_idx = flat_idx / 32;
+            bit_idx = flat_idx % 32;
+            physical_spin_snapshot = snapshot_words[word_idx][bit_idx];
         end
     endfunction
 
@@ -721,7 +719,7 @@ module tb;
 
         for (int word_idx = 0; word_idx < SPIN_RDATA_REG_NUM; word_idx++) begin
             read_reg(spin_rdata_addr(word_idx), rdata, "spin rdata");
-            snapshot_words[page][word_idx] = rdata;
+            snapshot_words[(page * SPIN_RDATA_REG_NUM) + word_idx] = rdata;
         end
     endtask
 

@@ -11,3 +11,9 @@
 3. pnode的状态机状态更改，删去PBIT状态改为IDLE -> num_majority_i+1次的CACL -> SUM -> MAJORITY -> IDLE，相当于一个phase需要（num_majority_i+1）+1+1+1个周期 
 4. pnode的状态机控制单独摘出来 全阵列只共用一个，称为pbit_control模块， 用current_phase独热信号区别哪个phase
 5. 软复位只复位运行状态，但是保留已经写入的配置
+
+9/5
+1. 阵列规模由40x40扩大为80x80，Node/Edge target行列地址由参数自动扩展为7bit
+2. Snapshot页数由阵列节点数和每页位数自动推导，80x80对应20页、5bit页地址
+3. 共享tanh LUT bank按每个bank覆盖10x10个共享tile自动分组，80x80对应4x4共16个bank
+4. 快照验证统一按flat_idx=row*COLS+col、word_idx=flat_idx/32、bit_idx=flat_idx%32解码，移除旧40列布局的硬编码

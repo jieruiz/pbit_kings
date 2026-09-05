@@ -187,7 +187,7 @@ module tb;
         end
     endtask
 
-    task automatic req_snapshot_addr(bit[7:0] op_e = OP_READ, bit[2:0] snapshot_addr = 1'b0);
+    task automatic req_snapshot_addr(bit[7:0] op_e = OP_READ, bit[SNAPSHOT_ADDR_WIDTH-1:0] snapshot_addr = '0);
         op = op_e;
         waddr = A_SNAPSHOT_ADDR;
         wdata = {{(32-SNAPSHOT_ADDR_MSB-1){1'b0}}, snapshot_addr};

@@ -506,7 +506,7 @@ def build_problem(spec_path, spec):
     kings_rows = int(hw.get("kings_rows", 40))
     kings_cols = int(hw.get("kings_cols", 40))
     rtl_rows = int(hw.get("rtl_rows", kings_rows))
-    rtl_cols = int(hw.get("rtl_cols", 40))
+    rtl_cols = int(hw.get("rtl_cols", 80))
     seed_rows = (rtl_rows + 1) // 2
     seed_cols = (rtl_cols + 1) // 2
     bias_placement = spec.get("problem", {}).get("bias_placement", "distribute")

@@ -6,12 +6,19 @@ package pbit_pkg;
     parameter int COLS = 40;
     parameter int SHARED_ROWS = (ROWS+1)/2;
     parameter int SHARED_COLS = (COLS+1)/2;
+    // SCALED_STRUCT_SYNC: Derive regional banks while preserving the current 40x40 configuration.
+    parameter int TANH_BANK_TILE_ROWS = 10;
+    parameter int TANH_BANK_TILE_COLS = 10;
+    parameter int TANH_BANK_ROWS = (SHARED_ROWS + TANH_BANK_TILE_ROWS - 1) / TANH_BANK_TILE_ROWS;
+    parameter int TANH_BANK_COLS = (SHARED_COLS + TANH_BANK_TILE_COLS - 1) / TANH_BANK_TILE_COLS;
+    parameter int TANH_BANK_NUM = TANH_BANK_ROWS * TANH_BANK_COLS;
     parameter int CLK_FREQ_HZ = 400_000_000;
     parameter int BAUD_RATE = 10_000_000;
     parameter int N_SPIN = ROWS * COLS;
     parameter int SNAPSHOT_WIDTH = 320;
     parameter int SPIN_RDATA_REG_NUM = SNAPSHOT_WIDTH / 32;
-    parameter int SPIN_ADDR_MAX = N_SPIN / SNAPSHOT_WIDTH;
+    // SCALED_STRUCT_SYNC: Round up snapshot pages; the current 1600 spins still occupy five pages.
+    parameter int SPIN_ADDR_MAX = (N_SPIN + SNAPSHOT_WIDTH - 1) / SNAPSHOT_WIDTH;
     parameter int I0_LEVEL_WIDTH = 6;
     parameter int SWEEP_INTERVAL_WIDTH = 16;
     parameter int NUM_MAJORITY_MAX = 32;
@@ -146,7 +153,8 @@ package pbit_pkg;
 
     // Snapshot addr reg
     parameter logic [15:0] A_SNAPSHOT_ADDR = 16'h0014;
-    parameter SNAPSHOT_ADDR_WIDTH = 3;
+    // SCALED_STRUCT_SYNC: Derive page address width; the current configuration still uses three bits.
+    parameter SNAPSHOT_ADDR_WIDTH = (SPIN_ADDR_MAX <= 1) ? 1 : $clog2(SPIN_ADDR_MAX);
     parameter SNAPSHOT_ADDR_LSB = 0;
     parameter SNAPSHOT_ADDR_MSB = SNAPSHOT_ADDR_LSB + SNAPSHOT_ADDR_WIDTH - 1;
 

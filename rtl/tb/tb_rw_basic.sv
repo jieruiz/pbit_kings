@@ -3,7 +3,10 @@
 import pbit_pkg::*;
 
 module tb;
-    localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
+    timeunit 1ns;
+    timeprecision 1ps;
+    // Preserve the 2.5 ns PLL-core period without integer truncation.
+    localparam realtime CLK_PERIOD_NS = 1_000_000_000.0 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
 
     localparam logic [7:0] OP_WRITE = 8'h01;
@@ -294,6 +297,10 @@ module tb;
         logic [31:0] node_cfg_word;
         logic [31:0] node_seed_word;
         logic [31:0] node_rdata_expected;
+        logic [31:0] high_node_target_word;
+        logic [31:0] high_node_cfg_word;
+        logic [31:0] high_node_rdata_expected;
+        logic [31:0] snapshot_last_addr_word;
 
         error_count = 0;
         uart_rx_i = 1'b1;
@@ -307,10 +314,14 @@ module tb;
                     {N_SPIN_WIDTH'(N_SPIN), COLS_WIDTH'(COLS), ROWS_WIDTH'(ROWS)},
                     "array param");
 
-        node_cfg_target_word = pack_node_target(TARGET_MODE_LOCAL, 6'd5, 6'd6);
+        node_cfg_target_word = pack_node_target(TARGET_MODE_LOCAL,
+                                                  NODE_TARGET_ROW_WIDTH'(5),
+                                                  NODE_TARGET_COL_WIDTH'(6));
         // Shared LFSR seeds are addressed by 2x2 tile coordinate, so node (5,6)
         // uses seed tile (2,3), not physical node coordinate (5,6).
-        node_seed_target_word = pack_node_target(TARGET_MODE_LOCAL, 6'd2, 6'd3);
+        node_seed_target_word = pack_node_target(TARGET_MODE_LOCAL,
+                                                   NODE_TARGET_ROW_WIDTH'(2),
+                                                   NODE_TARGET_COL_WIDTH'(3));
         node_cfg_word = pack_node_cfg(.init_valid(1'b1),
                                       .clamp_valid(1'b1),
                                       .bias_valid(1'b1),
@@ -355,10 +366,60 @@ module tb;
         repeat (4) @(posedge clk);
         read_expect(A_NODE_RDATA_SEED, node_seed_word, "node applied seed readback");
 
-        check_edge_rw(EDGE_TYPE_EDGE_H,   6'd3, 6'd4, 7'h21, 1'b1, "H");
-        check_edge_rw(EDGE_TYPE_EDGE_V,   6'd4, 6'd5, 7'h22, 1'b0, "V");
-        check_edge_rw(EDGE_TYPE_EDGE_DSE, 6'd5, 6'd6, 7'h23, 1'b1, "DSE");
-        check_edge_rw(EDGE_TYPE_EDGE_DSW, 6'd6, 6'd7, 7'h24, 1'b0, "DSW");
+        // Exercise the seventh row/column address bit used by the 80x80 array.
+        if ((ROWS > 64) && (COLS > 64)) begin
+            high_node_target_word = pack_node_target(TARGET_MODE_LOCAL,
+                                                     NODE_TARGET_ROW_WIDTH'(ROWS-1),
+                                                     NODE_TARGET_COL_WIDTH'(COLS-1));
+            report_mismatch("80x80 high node target packing",
+                            high_node_target_word, 32'h004f_4f02);
+            high_node_cfg_word = pack_node_cfg(.init_valid(1'b1),
+                                                .clamp_valid(1'b1),
+                                                .bias_valid(1'b1),
+                                                .init_spin(1'b0),
+                                                .clamp_en(1'b1),
+                                                .clamp_spin(1'b1),
+                                                .bias_sign(1'b0),
+                                                .bias_prob(7'h2a));
+            high_node_rdata_expected = {{(32-NODE_CFG_W){1'b0}},
+                                        expected_node_rdata_cfg(.current_spin(1'b1),
+                                                                .clamp_en(1'b1),
+                                                                .clamp_spin(1'b1),
+                                                                .bias_sign(1'b0),
+                                                                .bias_prob(7'h2a))};
+
+            write_reg(A_NODE_TARGET, high_node_target_word, "high node target");
+            read_expect(A_NODE_TARGET, high_node_target_word, "high node target staging");
+            write_reg(A_NODE_CFG, high_node_cfg_word, "high node cfg");
+            write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "high node cfg apply");
+            repeat (4) @(posedge clk);
+            write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0), "high node cfg readback trigger");
+            repeat (4) @(posedge clk);
+            read_expect(A_NODE_RDATA_CFG, high_node_rdata_expected, "high node applied cfg readback");
+
+            check_edge_rw(EDGE_TYPE_EDGE_H,
+                          EDGE_TARGET_ROW_WIDTH'(ROWS-1),
+                          EDGE_TARGET_COL_WIDTH'(COLS-2),
+                          7'h35, 1'b1, "high H");
+            report_mismatch("80x80 high H target packing",
+                            pack_edge_target(EDGE_TYPE_EDGE_H,
+                                             EDGE_TARGET_ROW_WIDTH'(ROWS-1),
+                                             EDGE_TARGET_COL_WIDTH'(COLS-2)),
+                            32'h004e_4f00);
+        end
+
+        snapshot_last_addr_word = '0;
+        snapshot_last_addr_word[SNAPSHOT_ADDR_MSB:SNAPSHOT_ADDR_LSB] =
+            SNAPSHOT_ADDR_WIDTH'(SPIN_ADDR_MAX-1);
+        report_mismatch("80x80 last snapshot address packing",
+                        snapshot_last_addr_word, 32'(SPIN_ADDR_MAX-1));
+        write_reg(A_SNAPSHOT_ADDR, snapshot_last_addr_word, "last snapshot address");
+        read_expect(A_SNAPSHOT_ADDR, snapshot_last_addr_word, "last snapshot address staging");
+
+        check_edge_rw(EDGE_TYPE_EDGE_H,   EDGE_TARGET_ROW_WIDTH'(3), EDGE_TARGET_COL_WIDTH'(4), 7'h21, 1'b1, "H");
+        check_edge_rw(EDGE_TYPE_EDGE_V,   EDGE_TARGET_ROW_WIDTH'(4), EDGE_TARGET_COL_WIDTH'(5), 7'h22, 1'b0, "V");
+        check_edge_rw(EDGE_TYPE_EDGE_DSE, EDGE_TARGET_ROW_WIDTH'(5), EDGE_TARGET_COL_WIDTH'(6), 7'h23, 1'b1, "DSE");
+        check_edge_rw(EDGE_TYPE_EDGE_DSW, EDGE_TARGET_ROW_WIDTH'(6), EDGE_TARGET_COL_WIDTH'(7), 7'h24, 1'b0, "DSW");
 
         if (error_count == 0) begin
             $display("[TB_RW_BASIC] PASS");

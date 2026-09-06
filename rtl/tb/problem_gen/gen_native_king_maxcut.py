@@ -71,9 +71,9 @@ def build_native_king_problem(spec_path, spec):
     problem_cfg = spec.get("problem", {})
     rows = int(hw.get("kings_rows", 40))
     cols = int(hw.get("kings_cols", 40))
-    rtl_cols = int(hw.get("rtl_cols", 40))
-    if rows != 40 or cols != 40 or rtl_cols != 40:
-        raise ValueError("native_king_maxcut is intended for the full 40x40 RTL array")
+    rtl_cols = int(hw.get("rtl_cols", cols))
+    if rows != 40 or cols != 40 or rtl_cols < cols:
+        raise ValueError("native_king_maxcut requires a 40x40 problem region within the RTL array")
 
     num_logical = rows * cols
     physical_nodes = list(range(num_logical))
@@ -112,7 +112,8 @@ def build_native_king_problem(spec_path, spec):
     clear_edges = gp.build_clear_edges(rows, cols)
     chain_start, chain_phys_idx = gp.chain_arrays(mapping, phys_to_idx)
     snapshot_width = int(spec.get("snapshot_width", gp.RTL_SNAPSHOT_WIDTH))
-    snapshot_pages = int((num_logical + snapshot_width - 1) // snapshot_width)
+    max_flat = ((rows - 1) * rtl_cols) + (cols - 1)
+    snapshot_pages = int((max_flat + snapshot_width) // snapshot_width)
 
     return {
         "name": spec["name"],

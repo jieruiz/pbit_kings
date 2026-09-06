@@ -3,7 +3,10 @@
 import pbit_pkg::*;
 
 module tb;
-    localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
+    timeunit 1ns;
+    timeprecision 1ps;
+    // Preserve the 2.5 ns PLL-core period without integer truncation.
+    localparam realtime CLK_PERIOD_NS = 1_000_000_000.0 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
     localparam int unsigned K10_MIN_RUN_POLL_LIMIT = 1200;
     localparam int unsigned K10_PROGRESS_PRINT_STEP = 50;

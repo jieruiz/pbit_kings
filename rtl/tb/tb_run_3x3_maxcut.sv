@@ -3,7 +3,10 @@
 import pbit_pkg::*;
 
 module tb;
-    localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
+    timeunit 1ns;
+    timeprecision 1ps;
+    // Preserve the 2.5 ns PLL-core period without integer truncation.
+    localparam realtime CLK_PERIOD_NS = 1_000_000_000.0 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
     localparam int unsigned MAXCUT_OPT_SCORE = 14;
     localparam int unsigned MAXCUT_MIN_PASS_SCORE = 13;
@@ -353,12 +356,16 @@ module tb;
         seed_col = col / 2;
         seed = seed_base + (seed_row * 16) + seed_col;
 
-        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, row[5:0], col[5:0]), "node target");
+        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL,
+                                                  NODE_TARGET_ROW_WIDTH'(row),
+                                                  NODE_TARGET_COL_WIDTH'(col)), "node target");
         write_reg(A_NODE_CFG, pack_node_cfg(spin_value, 1'b0, spin_value), "node cfg");
         write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
 
         // Shared-LFSR RTL configures one seed per 2x2 tile, so seed target uses tile coordinates.
-        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL, seed_row[5:0], seed_col[5:0]), "seed target");
+        write_reg(A_NODE_TARGET, pack_node_target(TARGET_MODE_LOCAL,
+                                                  NODE_TARGET_ROW_WIDTH'(seed_row),
+                                                  NODE_TARGET_COL_WIDTH'(seed_col)), "seed target");
         write_reg(A_NODE_SEED, seed, "node seed");
         write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node seed apply");
         repeat (2) @(posedge clk);
@@ -382,7 +389,9 @@ module tb;
         input logic sign,
         input logic valid
     );
-        write_reg(A_EDGE_TARGET, pack_edge_target(edge_type, row[5:0], col[5:0]), "edge target");
+        write_reg(A_EDGE_TARGET, pack_edge_target(edge_type,
+                                                  EDGE_TARGET_ROW_WIDTH'(row),
+                                                  EDGE_TARGET_COL_WIDTH'(col)), "edge target");
         write_reg(A_EDGE_CFG, pack_edge_cfg(7'h7f, sign, valid), "edge cfg");
         write_reg(A_EDGE_CMD, pack_edge_cmd(1'b1, 1'b0, 1'b0), "edge apply");
         repeat (2) @(posedge clk);
@@ -393,7 +402,9 @@ module tb;
         input int unsigned row,
         input int unsigned col
     );
-        write_reg(A_EDGE_TARGET, pack_edge_target(edge_type, row[5:0], col[5:0]), "edge clear target");
+        write_reg(A_EDGE_TARGET, pack_edge_target(edge_type,
+                                                  EDGE_TARGET_ROW_WIDTH'(row),
+                                                  EDGE_TARGET_COL_WIDTH'(col)), "edge clear target");
         write_reg(A_EDGE_CMD, pack_edge_cmd(1'b0, 1'b1, 1'b0), "edge clear");
         repeat (2) @(posedge clk);
     endtask
@@ -576,24 +587,28 @@ module tb;
         end
     endtask
 
+    function automatic logic [15:0] spin_rdata_addr(input int unsigned idx);
+        spin_rdata_addr = A_SPIN_RDATA0 + (idx * 4);
+    endfunction
+
     task automatic read_3x3_snapshot(output logic [8:0] spins);
-        logic [31:0] spin0;
-        logic [31:0] spin1;
-        logic [31:0] spin2;
+        logic [31:0] snapshot_words [SPIN_RDATA_REG_NUM];
+        int unsigned flat_idx;
+        int unsigned word_idx;
+        int unsigned bit_idx;
 
-        read_reg(A_SPIN_RDATA0, spin0, "spin rdata0");
-        read_reg(A_SPIN_RDATA1, spin1, "spin rdata1");
-        read_reg(A_SPIN_RDATA2, spin2, "spin rdata2");
+        for (int read_word_idx = 0; read_word_idx < SPIN_RDATA_REG_NUM; read_word_idx++) begin
+            read_reg(spin_rdata_addr(read_word_idx), snapshot_words[read_word_idx], "spin rdata");
+        end
 
-        spins[0] = spin0[0];
-        spins[1] = spin0[1];
-        spins[2] = spin0[2];
-        spins[3] = spin1[8];
-        spins[4] = spin1[9];
-        spins[5] = spin1[10];
-        spins[6] = spin2[16];
-        spins[7] = spin2[17];
-        spins[8] = spin2[18];
+        for (int r = 0; r < 3; r++) begin
+            for (int c = 0; c < 3; c++) begin
+                flat_idx = (r * COLS) + c;
+                word_idx = flat_idx / 32;
+                bit_idx = flat_idx % 32;
+                spins[(r * 3) + c] = snapshot_words[word_idx][bit_idx];
+            end
+        end
     endtask
 
     task automatic run_maxcut_trial(

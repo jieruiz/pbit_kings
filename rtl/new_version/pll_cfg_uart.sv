@@ -6,7 +6,7 @@
 import pbit_pkg::*;
 module pll_cfg_uart #(
     parameter int REF_HZ = pbit_pkg::REF_CLK_FREQ_HZ,
-    parameter int BAUD = pbit_pkg::BAUD_RATE,
+    parameter int BAUD = pbit_pkg::PLL_CFG_BAUD_RATE,
     parameter int BYTE_TIMEOUT = REF_HZ / 50
 ) (
     input logic clk, rst_n, rx_i,

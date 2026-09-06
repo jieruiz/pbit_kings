@@ -1,8 +1,9 @@
+-timescale=1ns/1ps
 +incdir+common
 +incdir+new_version
 +incdir+tb
-./common/dff_sets.sv
 ./new_version/pbit_pkg.sv
+./common/dff_sets.sv
 ./new_version/pbit_edge_contrib2.sv
 ./new_version/majority_vote.sv
 ./new_version/pbit_prob_compare16.sv

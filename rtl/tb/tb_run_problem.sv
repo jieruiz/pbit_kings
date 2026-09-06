@@ -3,7 +3,10 @@
 import pbit_pkg::*;
 
 module tb;
-    localparam int unsigned CLK_PERIOD_NS = 1_000_000_000 / CLK_FREQ_HZ;
+    timeunit 1ns;
+    timeprecision 1ps;
+    // Preserve the 2.5 ns PLL-core period without integer truncation.
+    localparam realtime CLK_PERIOD_NS = 1_000_000_000.0 / CLK_FREQ_HZ;
     localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
     localparam int unsigned MIN_RUN_POLL_LIMIT = 1200;
 
@@ -32,7 +35,7 @@ module tb;
 
     `include "problem_data.svh"
 
-    logic [31:0] snapshot_words [PROBLEM_SNAPSHOT_PAGES][SPIN_RDATA_REG_NUM];
+    logic [31:0] snapshot_words [PROBLEM_SNAPSHOT_PAGES * SPIN_RDATA_REG_NUM];
 
     initial begin
         clk = 1'b1;
@@ -362,7 +365,9 @@ module tb;
             for (int seed_col = 0; seed_col < PROBLEM_SEED_COLS; seed_col++) begin
                 tile_idx = (seed_row * PROBLEM_SEED_COLS) + seed_col;
                 write_reg(A_NODE_TARGET,
-                          pack_node_target(TARGET_MODE_LOCAL, seed_row[5:0], seed_col[5:0]),
+                          pack_node_target(TARGET_MODE_LOCAL,
+                                           NODE_TARGET_ROW_WIDTH'(seed_row),
+                                           NODE_TARGET_COL_WIDTH'(seed_col)),
                           "tile seed target");
                 write_reg(A_NODE_SEED, problem_tile_seed[run_idx][tile_idx], "tile seed");
                 // Shared-LFSR/LUT RTL applies seeds per 2x2 tile, not per physical p-bit.
@@ -416,17 +421,13 @@ module tb;
 
     function automatic logic physical_spin_snapshot(input int unsigned phys_idx);
         int unsigned flat_idx;
-        int unsigned page;
-        int unsigned page_bit;
-        int unsigned word;
+        int unsigned word_idx;
         int unsigned bit_idx;
         begin
             flat_idx = (problem_phys_row[phys_idx] * COLS) + problem_phys_col[phys_idx];
-            page = flat_idx / SNAPSHOT_WIDTH;
-            page_bit = flat_idx % SNAPSHOT_WIDTH;
-            word = page_bit / 32;
-            bit_idx = page_bit % 32;
-            physical_spin_snapshot = snapshot_words[page][word][bit_idx];
+            word_idx = flat_idx / 32;
+            bit_idx = flat_idx % 32;
+            physical_spin_snapshot = snapshot_words[word_idx][bit_idx];
         end
     endfunction
 
@@ -546,7 +547,7 @@ module tb;
             end
             for (int word_idx = 0; word_idx < SPIN_RDATA_REG_NUM; word_idx++) begin
                 read_reg(spin_rdata_addr(word_idx), rdata, "spin rdata");
-                snapshot_words[page][word_idx] = rdata;
+                snapshot_words[(page * SPIN_RDATA_REG_NUM) + word_idx] = rdata;
             end
         end
     endtask
@@ -562,6 +563,11 @@ module tb;
         uart_rx_i = 1'b1;
         rst_n = 1'b0;
         load_problem_data();
+        // Reject stale 40/80 includes before any configuration reaches the DUT.
+        if (PROBLEM_RTL_COLS != COLS || PROBLEM_REGION_ROWS > ROWS ||
+            PROBLEM_REGION_COLS > COLS || PROBLEM_SNAPSHOT_PAGES > SPIN_ADDR_MAX ||
+            PROBLEM_SEED_ROWS > SHARED_ROWS || PROBLEM_SEED_COLS > SHARED_COLS)
+            $fatal(1, "[RUN_PROBLEM] generated geometry does not match RTL; regenerate with correct rtl_cols");
 
         $display("[RUN_PROBLEM] kind=%0d logical=%0d physical=%0d config_edges=%0d clear_edges=%0d",
                  PROBLEM_KIND, PROBLEM_NUM_LOGICAL, PROBLEM_NUM_PHYSICAL,

@@ -120,7 +120,8 @@ module pbit_io_wrapper (
         .rst_n_o  (ref_rst_n)
     );
 
-    pll_cfg_uart #(.REF_HZ(REF_CLK_FREQ_HZ)) u_pll_cfg_uart (
+    // Explicitly keep configuration at 115200 baud, not the core's 10 Mbps.
+    pll_cfg_uart #(.REF_HZ(REF_CLK_FREQ_HZ), .BAUD(PLL_CFG_BAUD_RATE)) u_pll_cfg_uart (
         .clk(ref_clk), .rst_n(ref_rst_n), .rx_i(cfg_rx), .tx_o(cfg_tx),
         .req_valid(req_valid), .req_write(req_write),
         .req_addr(req_addr), .req_data(req_data),

@@ -786,6 +786,9 @@ def write_data_svh(path: Path, problem):
     lines.append(f"localparam int unsigned PROBLEM_KIND_LOCAL_QUBO = 3;")
     lines.append(f"localparam int unsigned PROBLEM_KIND = PROBLEM_KIND_{problem['kind'].upper()};")
     lines.append(f"localparam int unsigned PROBLEM_NUM_LOGICAL = {problem['num_logical']};")
+    lines.append(f"localparam int unsigned PROBLEM_RTL_COLS = {problem['rtl_cols']};")
+    lines.append(f"localparam int unsigned PROBLEM_REGION_ROWS = {problem['kings_rows']};")
+    lines.append(f"localparam int unsigned PROBLEM_REGION_COLS = {problem['kings_cols']};")
     lines.append(f"localparam int unsigned PROBLEM_NUM_VARIABLES = {problem['num_variables']};")
     lines.append(f"localparam int unsigned PROBLEM_NUM_CLAUSES = {problem['num_clauses']};")
     lines.append(f"localparam int unsigned PROBLEM_LITS_PER_CLAUSE = {problem['lits_per_clause']};")
@@ -809,21 +812,21 @@ def write_data_svh(path: Path, problem):
     lines.append(f"localparam int unsigned PROBLEM_SEED_COLS = {problem['seed_cols']};")
     lines.append("localparam int unsigned PROBLEM_NUM_TILE_SEEDS = PROBLEM_SEED_ROWS * PROBLEM_SEED_COLS;")
     lines.append("")
-    lines.append("logic [5:0] problem_phys_row [PROBLEM_NUM_PHYSICAL];")
-    lines.append("logic [5:0] problem_phys_col [PROBLEM_NUM_PHYSICAL];")
+    lines.append("logic [NODE_TARGET_ROW_WIDTH-1:0] problem_phys_row [PROBLEM_NUM_PHYSICAL];")
+    lines.append("logic [NODE_TARGET_COL_WIDTH-1:0] problem_phys_col [PROBLEM_NUM_PHYSICAL];")
     lines.append("logic [31:0] problem_global_seed [PROBLEM_NUM_SEED_RUNS];")
     lines.append("logic [31:0] problem_tile_seed [PROBLEM_NUM_SEED_RUNS][PROBLEM_NUM_TILE_SEEDS];")
     lines.append("logic problem_node_init_spin [PROBLEM_NUM_SEED_RUNS][PROBLEM_NUM_PHYSICAL];")
     lines.append("logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] problem_node_bias_prob [PROBLEM_NUM_PHYSICAL];")
     lines.append("logic problem_node_bias_sign [PROBLEM_NUM_PHYSICAL];")
     lines.append("logic [EDGE_TYPE_WIDTH-1:0] problem_edge_type [PROBLEM_NUM_CONFIG_EDGES];")
-    lines.append("logic [5:0] problem_edge_row [PROBLEM_NUM_CONFIG_EDGES];")
-    lines.append("logic [5:0] problem_edge_col [PROBLEM_NUM_CONFIG_EDGES];")
+    lines.append("logic [EDGE_TARGET_ROW_WIDTH-1:0] problem_edge_row [PROBLEM_NUM_CONFIG_EDGES];")
+    lines.append("logic [EDGE_TARGET_COL_WIDTH-1:0] problem_edge_col [PROBLEM_NUM_CONFIG_EDGES];")
     lines.append("logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0] problem_edge_prob [PROBLEM_NUM_CONFIG_EDGES];")
     lines.append("logic problem_edge_sign [PROBLEM_NUM_CONFIG_EDGES];")
     lines.append("logic [EDGE_TYPE_WIDTH-1:0] problem_clear_edge_type [PROBLEM_NUM_CLEAR_EDGES];")
-    lines.append("logic [5:0] problem_clear_edge_row [PROBLEM_NUM_CLEAR_EDGES];")
-    lines.append("logic [5:0] problem_clear_edge_col [PROBLEM_NUM_CLEAR_EDGES];")
+    lines.append("logic [EDGE_TARGET_ROW_WIDTH-1:0] problem_clear_edge_row [PROBLEM_NUM_CLEAR_EDGES];")
+    lines.append("logic [EDGE_TARGET_COL_WIDTH-1:0] problem_clear_edge_col [PROBLEM_NUM_CLEAR_EDGES];")
     lines.append("int unsigned problem_chain_start [PROBLEM_NUM_LOGICAL + 1];")
     lines.append("int unsigned problem_chain_phys_idx [PROBLEM_NUM_CHAIN_ENTRIES];")
     lines.append("int unsigned problem_logical_edge_a [PROBLEM_NUM_LOGICAL_EDGES_ALLOC];")
@@ -1680,21 +1683,24 @@ endtask
 
 def write_filelist(path: Path):
     lines = [
+        "-timescale=1ns/1ps",
         "+incdir+common",
         "+incdir+new_version",
         "+incdir+tb",
         "+incdir+tb/generated",
-        "./common/dff_sets.sv",
-        "./common/one_counter.sv",
         "./new_version/pbit_pkg.sv",
+        "./common/dff_sets.sv",
         "./new_version/pbit_edge_contrib2.sv",
         "./new_version/majority_vote.sv",
         "./new_version/pbit_prob_compare16.sv",
         "./new_version/pbit_rand16_extract.sv",
+        "./new_version/comparator_vote.sv",
         "./new_version/tanh_LUT.sv",
         "./new_version/pbit_8edge_compute.sv",
         "./new_version/edge_prob_compare.sv",
         "./new_version/edge_compare8_named.sv",
+        "./new_version/mac.sv",
+        "./new_version/pbit_control.sv",
         "./new_version/lfsr32_rng32.sv",
         "./new_version/UART_RX.sv",
         "./new_version/UART_TX.sv",

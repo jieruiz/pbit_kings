@@ -2,7 +2,6 @@
 +incdir+common
 +incdir+new_version
 +incdir+tb
-+incdir+tb/generated
 ./new_version/pbit_pkg.sv
 ./common/dff_sets.sv
 ./new_version/pbit_edge_contrib2.sv
@@ -15,8 +14,8 @@
 ./new_version/edge_prob_compare.sv
 ./new_version/edge_compare8_named.sv
 ./new_version/mac.sv
-./new_version/pbit_control.sv
 ./new_version/lfsr32_rng32.sv
+./new_version/pbit_control.sv
 ./new_version/UART_RX.sv
 ./new_version/UART_TX.sv
 ./new_version/edge_reg_coupler.sv
@@ -27,4 +26,11 @@
 ./new_version/pbit_array_kings.sv
 ./new_version/pbit_uart_reg_subsystem.sv
 ./new_version/pbit_top.sv
-./tb/tb_run_problem.sv
+./new_version/reset_sync_async_assert.sv
+./new_version/pll_cfg_regs.sv
+./new_version/pll_cfg_uart.sv
+./new_version/pbit_io_wrapper.sv
+./tb/pll_cfg/io_functional_stubs.sv
+./tb/pll_cfg/pll_functional_model.sv
+./tb/pll_cfg/uart_host.sv
+./tb/pll_cfg/tb_pll_wrapper.sv

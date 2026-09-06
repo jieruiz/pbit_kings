@@ -1,0 +1,10 @@
+-timescale=1ns/1ps
+./new_version/pbit_pkg.sv
+./common/dff_sets.sv
+./new_version/UART_RX.sv
+./new_version/UART_TX.sv
+./new_version/reset_sync_async_assert.sv
+./new_version/pll_cfg_regs.sv
+./new_version/pll_cfg_uart.sv
+./tb/pll_cfg/uart_host.sv
+./tb/pll_cfg/tb_pll_cfg_uart.sv

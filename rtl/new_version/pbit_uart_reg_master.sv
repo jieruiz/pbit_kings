@@ -26,7 +26,10 @@ import pbit_pkg::*;
 // The UART layer does not know p-bit semantics. It only issues register reads
 // and writes. pbit_reg_block owns the register map and all control semantics.
 // -----------------------------------------------------------------------------
-module pbit_uart_reg_master (
+module pbit_uart_reg_master #(
+    // Match the configuration UART timeout cycle count, not its elapsed time.
+    parameter int BYTE_TIMEOUT = int'((64'(pbit_pkg::REF_CLK_FREQ_HZ) * pbit_pkg::PLL_CFG_BYTE_TIMEOUT_MS) / 1000)
+) (
     input  logic        clk,
     input  logic        rst_n,
 
@@ -46,6 +49,8 @@ module pbit_uart_reg_master (
     output logic        uart_rx_busy_o,
     output logic        uart_tx_busy_o
 );
+
+    localparam int BYTE_TIMEOUT_WIDTH = (BYTE_TIMEOUT > 1)? $clog2(BYTE_TIMEOUT + 1): 1;
 
     localparam [7:0] OP_WRITE  = 8'h01;
     localparam [7:0] OP_READ   = 8'h02;
@@ -80,6 +85,9 @@ module pbit_uart_reg_master (
     logic [2:0]  rx_byte_cnt_q, rx_byte_cnt_d;
     logic        rx_cmd_valid_w;
     logic        rx_cmd_illegal_w;
+    logic        rx_byte_timeout_w;
+    logic [BYTE_TIMEOUT_WIDTH-1:0] rx_timeout_cnt_q, rx_timeout_cnt_d;
+    logic        rx_timeout_cnt_en;
 
     logic        req_valid_q, req_valid_d;
     logic        req_wr_en_q, req_wr_en_d;
@@ -132,14 +140,22 @@ module pbit_uart_reg_master (
                          (tx_state_q != TX_IDLE) || tx_busy_w;
     assign uart_overflow_pulse_d = (rx_cmd_valid_w && uart_busy_w)? 1'b1: 1'b0;
     assign uart_overflow_pulse_o = uart_overflow_pulse_q;
-    assign uart_frame_err_pulse_d = (rx_cmd_valid_w && !uart_busy_w && rx_cmd_illegal_w)? 1'b1 : 1'b0;
+    assign uart_frame_err_pulse_d = (rx_byte_timeout_w || (rx_cmd_valid_w && !uart_busy_w && rx_cmd_illegal_w))? 1'b1 : 1'b0;
     assign uart_frame_err_pulse_o = uart_frame_err_pulse_q;
 
-    assign rx_shift_d = {rx_shift_q[47:0], rx_data_w};
-    assign rx_shift_en = rx_valid_w;
+    assign rx_shift_d = rx_byte_timeout_w? 56'd0: {rx_shift_q[47:0], rx_data_w};
+    assign rx_shift_en = rx_valid_w || rx_byte_timeout_w;
     assign rx_cmd_valid_w = rx_valid_w && (rx_byte_cnt_q == 3'd6);
-    assign rx_byte_cnt_d = rx_valid_w? (rx_byte_cnt_q == 3'd6)? 3'd0: rx_byte_cnt_q + 1: rx_byte_cnt_q;
+    assign rx_byte_cnt_d = rx_byte_timeout_w? 3'd0:
+                           rx_valid_w? (rx_byte_cnt_q == 3'd6)? 3'd0: rx_byte_cnt_q + 1:
+                           rx_byte_cnt_q;
     assign rx_cmd_illegal_w = !((rx_shift_d[55:48] == OP_WRITE) || (rx_shift_d[55:48] == OP_READ));
+
+    // A valid byte on the last allowed cycle takes priority over timeout.
+    assign rx_byte_timeout_w = !rx_valid_w && (rx_byte_cnt_q != 3'd0) &&
+                               (rx_timeout_cnt_q == BYTE_TIMEOUT - 1);
+    assign rx_timeout_cnt_d = (rx_valid_w || rx_byte_timeout_w)? '0: rx_timeout_cnt_q + 1'b1;
+    assign rx_timeout_cnt_en = rx_valid_w || (rx_byte_cnt_q != 3'd0);
 
     assign resp_no_pend_w = !resp_valid_q && (tx_state_q == TX_IDLE) && !tx_busy_w;
     assign resp_valid_d = (rx_cmd_valid_w && uart_busy_w && resp_no_pend_w)? 1'b1:
@@ -234,7 +250,8 @@ module pbit_uart_reg_master (
         .rst_n      (rst_n),
         .rx_i       (uart_rx_i),
         .rx_data_o  (rx_data_w),
-        .rx_valid_o (rx_valid_w)
+        .rx_valid_o (rx_valid_w),
+        .rx_frame_err_o ()
     );
 
     uart_tx_8n1 u_uart_tx_8n1 (
@@ -262,6 +279,17 @@ module pbit_uart_reg_master (
         .rst_n(rst_n),
         .d_i(rx_byte_cnt_d),
         .q_o(rx_byte_cnt_q)
+    );
+
+    dffre #(
+        .WIDTH(BYTE_TIMEOUT_WIDTH),
+        .RESET_VALUE('0)
+    ) rx_timeout_cnt_ff (
+        .clk(clk),
+        .rst_n(rst_n),
+        .en_i(rx_timeout_cnt_en),
+        .d_i(rx_timeout_cnt_d),
+        .q_o(rx_timeout_cnt_q)
     );
 
     dffr #(

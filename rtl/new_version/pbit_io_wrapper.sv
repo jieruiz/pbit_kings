@@ -18,7 +18,7 @@ module pbit_io_wrapper (
     inout  wire pll_dvss_drv
 );
 
-    // Config UART: 25 MHz reference, 115200 baud. Default shadow: 400 MHz.
+    // Config UART: 25 MHz reference, 1_000_000 baud. Default shadow: 400 MHz.
     // PLL stays disabled and core stays reset until a valid APPLY command.
     // Hold pad_rst_n_i low until all PLL supplies and REFCLK are stable.
 
@@ -120,7 +120,7 @@ module pbit_io_wrapper (
         .rst_n_o  (ref_rst_n)
     );
 
-    // Explicitly keep configuration at 115200 baud, not the core's 10 Mbps.
+    // Explicitly keep configuration at 1_000_000 baud.
     pll_cfg_uart #(.REF_HZ(REF_CLK_FREQ_HZ), .BAUD(PLL_CFG_BAUD_RATE)) u_pll_cfg_uart (
         .clk(ref_clk), .rst_n(ref_rst_n), .rx_i(cfg_rx), .tx_o(cfg_tx),
         .req_valid(req_valid), .req_write(req_write),

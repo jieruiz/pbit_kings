@@ -11,3 +11,14 @@
 3. pnode的状态机状态更改，删去PBIT状态改为IDLE -> num_majority_i+1次的CACL -> SUM -> MAJORITY -> IDLE，相当于一个phase需要（num_majority_i+1）+1+1+1个周期 
 4. pnode的状态机控制单独摘出来 全阵列只共用一个，称为pbit_control模块， 用current_phase独热信号区别哪个phase
 5. 软复位只复位运行状态，但是保留已经写入的配置
+
+9/6
+1. 配置域波特率PLL_CFG_BAUD_RATE改为1_000_000，25MHz参考时钟下每位25个周期，修复原10Mbps设置无法整数分频的问题；业务域保持400MHz下10Mbps，每位40个周期
+2. tb_pll_cfg_regs和tb_pll_cfg_uart使用pbit_pkg中的时钟及配置域波特率参数，测试时钟、串口位周期和相关等待时间随参数变化
+3. 修复UART_RX错误停止位仍产生有效字节的问题，停止位为低时丢弃字节并保持原接收数据，新增1位rx_frame_err寄存器输出一拍错误脉冲
+4. UART_RX增加S_WAIT_IDLE状态，错误后等待RX恢复高电平再接收，避免持续低电平反复产生字节；状态寄存器仍为3位，计数器在等待状态停止更新；两个组帧模块暂未使用rx_frame_err_o立即清除半帧
+5. pbit_pkg增加PLL_CFG_BYTE_TIMEOUT_MS参数，默认20ms，pll_cfg_uart按参考时钟换算BYTE_TIMEOUT，当前25MHz对应500_000周期，tb_pll_cfg_uart同步引用
+6. 修复业务UART半帧后无法通过空闲恢复的问题，pbit_uart_reg_master增加19位字节间超时计数器，采用与配置域相同的500_000周期，400MHz下为1.25ms，25MHz旁路下为20ms
+7. 业务UART每收到一个有效字节重新计时，超时清除残留数据和字节计数，并通过原uart_frame_err_pulse_o上报；截止周期到达的有效字节优先接收，超时不发起寄存器访问或额外串口响应
+8. 新增tb_uart_rx_framing和tb_uart_byte_timeout及对应filelist，停止位错误、持续低电平、恢复接收、1到6字节半帧、截止周期、晚到字节和复位恢复验证通过；PLL配置、PLL顶层及业务读写回归通过，业务读写使用之前修正并行监听的TB副本
+9. 重写PLL_CONFIG.md，更新参数、报文、寄存器、启动流程、UART错误及超时行为、实际验证入口和验证范围

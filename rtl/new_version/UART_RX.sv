@@ -11,7 +11,8 @@ module uart_rx_8n1 #(
     input  logic       rx_i,
 
     output logic [7:0] rx_data_o,
-    output logic       rx_valid_o
+    output logic       rx_valid_o,
+    output logic       rx_frame_err_o
 );
 
     localparam logic [31:0] CLKS_PER_BIT = CLK_FREQ_HZ / BAUD_RATE;
@@ -20,7 +21,8 @@ module uart_rx_8n1 #(
         S_IDLE  = 3'd0,
         S_START = 3'd1,
         S_DATA  = 3'd2,
-        S_STOP  = 3'd3
+        S_STOP  = 3'd3,
+        S_WAIT_IDLE = 3'd4
     } state_e;
 
     state_e      state_q, state_d;
@@ -37,6 +39,7 @@ module uart_rx_8n1 #(
     logic        rx_data_en;
 
     logic        rx_data_valid_q, rx_data_valid_d;
+    logic        rx_frame_err_q, rx_frame_err_d;
     
     logic        rx_sync_dly1, rx_sync_dly2;
 
@@ -76,9 +79,22 @@ module uart_rx_8n1 #(
 
             S_STOP: begin
                 if(clk_cnt_q == CLKS_PER_BIT - 1) begin
-                    state_d = S_IDLE;
+                    if(rx_sync_dly2 == 1'b1) begin
+                        state_d = S_IDLE;
+                    end else begin
+                        state_d = S_WAIT_IDLE;
+                    end
                 end else begin
                     state_d = S_STOP;
+                end
+            end
+
+            // Wait for the line to recover after a framing error or break.
+            S_WAIT_IDLE: begin
+                if(rx_sync_dly2 == 1'b1) begin
+                    state_d = S_IDLE;
+                end else begin
+                    state_d = S_WAIT_IDLE;
                 end
             end
 
@@ -90,7 +106,7 @@ module uart_rx_8n1 #(
                        ((state_q == S_DATA) && (clk_cnt_q == (CLKS_PER_BIT - 1)))? 32'd0 :
                        ((state_q == S_STOP) && (clk_cnt_q == (CLKS_PER_BIT - 1)))? 32'd0 :
                         clk_cnt_q + 32'd1;
-    assign clk_cnt_en = (state_q != S_IDLE);
+    assign clk_cnt_en = (state_q == S_START) || (state_q == S_DATA) || (state_q == S_STOP);
 
     assign bit_cnt_d = (state_q == S_IDLE)? 3'd0 :
                        ((state_q == S_DATA) && (clk_cnt_q == (CLKS_PER_BIT - 1)))? bit_cnt_q + 3'd1 : // 3'd7 + 1 = 0
@@ -100,11 +116,14 @@ module uart_rx_8n1 #(
     assign rx_shift_en = (state_q == S_DATA) && (clk_cnt_q == (CLKS_PER_BIT - 1));
 
     assign rx_data_d = rx_shift_q;
-    assign rx_data_en = (state_q == S_STOP) && (clk_cnt_q == (CLKS_PER_BIT - 1));
+    assign rx_data_en = (state_q == S_STOP) && (clk_cnt_q == (CLKS_PER_BIT - 1)) && (rx_sync_dly2 == 1'b1);
     assign rx_data_o = rx_data_q;
 
-    assign rx_data_valid_d = ((state_q == S_STOP) && (clk_cnt_q == (CLKS_PER_BIT - 1)))? 1'b1 : 1'b0;
+    assign rx_data_valid_d = rx_data_en? 1'b1 : 1'b0;
     assign rx_valid_o = rx_data_valid_q;
+
+    assign rx_frame_err_d = ((state_q == S_STOP) && (clk_cnt_q == (CLKS_PER_BIT - 1)) && (rx_sync_dly2 == 1'b0))? 1'b1 : 1'b0;
+    assign rx_frame_err_o = rx_frame_err_q;
     
     dffr #(.WIDTH(1),
            .RESET_VALUE(1'b1)
@@ -176,6 +195,15 @@ module uart_rx_8n1 #(
         .rst_n(rst_n),
         .d_i(rx_data_valid_d),
         .q_o(rx_data_valid_q)
+    );
+
+    dffr #(.WIDTH(1),
+           .RESET_VALUE(1'b0)
+    ) rx_frame_err_ff (
+        .clk(clk),
+        .rst_n(rst_n),
+        .d_i(rx_frame_err_d),
+        .q_o(rx_frame_err_q)
     );
 endmodule
 `endif

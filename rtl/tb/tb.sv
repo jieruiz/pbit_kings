@@ -84,31 +84,37 @@ module tb;
         output logic [15:0] raddr,
         output logic [31:0] rdata
     );
-    logic [7:0] rx_data;
-    uart_send_byte(op);
-    for(int i = 0; i < 2; i++)begin
-        uart_send_byte(waddr[(1-i)*8+:8]);
-    end
-    for(int i = 0; i < 4; i++)begin
-        uart_send_byte(wdata[(3-i)*8+:8]);
-    end
-    for(int i = 0; i < 7; i++)begin
-        uart_receive_byte(rx_data);
-        case(i)
-            0: begin
-                if(!$cast(status, rx_data)) begin
-                    $error("Illegal status value: %b", rx_data);
+        logic [7:0] rx_data;
+        fork
+            begin
+                uart_send_byte(op);
+                for(int i = 0; i < 2; i++)begin
+                    uart_send_byte(waddr[(1-i)*8+:8]);
+                end
+                for(int i = 0; i < 4; i++)begin
+                    uart_send_byte(wdata[(3-i)*8+:8]);
                 end
             end
-            1: raddr[15:8] = rx_data;
-            2: raddr[7:0]  = rx_data;
-            3: rdata[31:24] = rx_data;
-            4: rdata[23:16] = rx_data;
-            5: rdata[15:8]  = rx_data;
-            6: rdata[7:0]   = rx_data;
-        endcase
-    end
-    $display("status: %s\nraddr: %0h\nrdata: %0b", status.name(), raddr, rdata);
+            begin
+                for(int i = 0; i < 7; i++)begin
+                    uart_receive_byte(rx_data);
+                    case(i)
+                        0: begin
+                            if(!$cast(status, rx_data)) begin
+                                $error("Illegal status value: %b", rx_data);
+                            end
+                        end
+                        1: raddr[15:8] = rx_data;
+                        2: raddr[7:0]  = rx_data;
+                        3: rdata[31:24] = rx_data;
+                        4: rdata[23:16] = rx_data;
+                        5: rdata[15:8]  = rx_data;
+                        6: rdata[7:0]   = rx_data;
+                    endcase
+                end
+            end
+        join
+        $display("status: %s\nraddr: %0h\nrdata: %0b", status.name(), raddr, rdata);
     endtask
 
     task automatic req_global_ctrl(bit error_clear = 1'b0, bit run_done_clear = 1'b0, bit snapshot_latch = 1'b0, 

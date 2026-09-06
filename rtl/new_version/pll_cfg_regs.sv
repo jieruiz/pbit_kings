@@ -3,8 +3,8 @@
 // 25 MHz reference-domain register bank and PLL startup controller.
 // No clock mux, no automatic failover and no inferred LOCK indication.
 module pll_cfg_regs #(
-    parameter int REF_HZ = 25_000_000,
-    parameter int MAX_CORE_HZ = 400_000_000,
+    parameter int REF_HZ = pbit_pkg::REF_CLK_FREQ_HZ,
+    parameter int MAX_CORE_HZ = pbit_pkg::CLK_FREQ_HZ,
     parameter int WAIT_CYCLES = (REF_HZ / 1_000_000) * 15,
     // Reference cycles allowed for actual core reset-release acknowledgment,
     // counted AFTER the 15 us startup wait. Not a PLL lock timeout.

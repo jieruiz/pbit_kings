@@ -13,7 +13,7 @@ package pbit_pkg;
     parameter int TANH_BANK_COLS = (SHARED_COLS + TANH_BANK_TILE_COLS - 1) / TANH_BANK_TILE_COLS;
     parameter int TANH_BANK_NUM = TANH_BANK_ROWS * TANH_BANK_COLS;
     parameter int REF_CLK_FREQ_HZ = 25_000_000;
-    parameter int CLK_FREQ_HZ = REF_CLK_FREQ_HZ * 16;
+    parameter int CLK_FREQ_HZ = 400_000_000;
     parameter int BAUD_RATE = 10_000_000;
     parameter int N_SPIN = ROWS * COLS;
     parameter int SNAPSHOT_WIDTH = 320;

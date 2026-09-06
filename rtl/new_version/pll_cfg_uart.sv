@@ -3,9 +3,10 @@
 // Four raw bytes: OP, byte address, DATA[15:8], DATA[7:0].
 // Reply: STATUS, echoed address, DATA[15:8], DATA[7:0].
 // Stop-and-wait protocol: host must receive a complete reply before next request.
+import pbit_pkg::*;
 module pll_cfg_uart #(
-    parameter int REF_HZ = 25_000_000,
-    parameter int BAUD = 115200,
+    parameter int REF_HZ = pbit_pkg::REF_CLK_FREQ_HZ,
+    parameter int BAUD = pbit_pkg::BAUD_RATE,
     parameter int BYTE_TIMEOUT = REF_HZ / 50
 ) (
     input logic clk, rst_n, rx_i,

@@ -9,10 +9,11 @@ module tb_pll_wrapper;
     tri avdd, avss, dvdd, dvss, dvdd_drv, dvss_drv;
     assign avdd = 1; assign dvdd = 1; assign dvdd_drv = 1;
     assign avss = 0; assign dvss = 0; assign dvss_drv = 0;
-    realtime business_bit_ns = 100.0;
+    localparam int CORE_CLKS_PER_BIT = CLK_FREQ_HZ / BAUD_RATE;
+    realtime business_bit_ns = CORE_CLKS_PER_BIT * (1.0e9 / CLK_FREQ_HZ);
     int reset_assertions = 0;
     always #20 ref_clk = ~ref_clk;
-    uart_host host(.rx(cfg_rx), .tx(cfg_tx));
+    uart_host #(.BIT_NS(1.0e9 / PLL_CFG_BAUD_RATE)) host(.rx(cfg_rx), .tx(cfg_tx));
     pbit_io_wrapper dut(.pad_clk_i(ref_clk), .pad_rst_n_i(pad_rst_n),
         .pad_uart_rx_i(core_rx), .pad_uart_tx_o(core_tx),
         .pad_pll_cfg_rx_i(cfg_rx), .pad_pll_cfg_tx_o(cfg_tx),
@@ -31,7 +32,10 @@ module tb_pll_wrapper;
         measured = ($realtime-t0)/100.0;
         if (measured < expected-0.005 || measured > expected+0.005)
             $fatal(1, "PLL clock period %0.4f expected %0.4f ns",measured,expected);
-        $display("[PLL_WRAPPER] core_period_ns=%0.4f",measured);
+        // The compiled UART divider is fixed even when APPLY changes the clock.
+        business_bit_ns = expected * CORE_CLKS_PER_BIT;
+        $display("[PLL_WRAPPER] core_period_ns=%0.4f business_bit_ns=%0.4f divider=%0d",
+                 measured,business_bit_ns,CORE_CLKS_PER_BIT);
     endtask
     task automatic send_core(input logic [7:0] v);
         core_rx = 0; #(business_bit_ns);
@@ -142,18 +146,17 @@ module tb_pll_wrapper;
         cfg(32'h0204_0000,32'h0004_0072);
         cfg(32'h0206_0000,32'h0006_0218);
         check_period(10.0/3.0);
-        // Business divider remains 40: 300 MHz / 40 = 7.5 Mbps.
-        business_bit_ns=400.0/3.0; core_smoke();
+        core_smoke();
         cfg(32'h0100_0a20,32'h0000_0000);
         cfg(32'h0102_0001,32'h0002_0000);
         cfg(32'h0204_0000,32'h0004_007a);
         check_period(40.0);
-        business_bit_ns=1600.0;
         rd(A_ARRAY_PARAM,{N_SPIN_WIDTH'(N_SPIN),COLS_WIDTH'(COLS),ROWS_WIDTH'(ROWS)});
         cfg(32'h0100_0220,32'h0000_0000);
         cfg(32'h0102_0001,32'h0002_0000);
         cfg(32'h0204_0000,32'h0004_0072);
         check_period(2.5);
+        rd(A_ARRAY_PARAM,{N_SPIN_WIDTH'(N_SPIN),COLS_WIDTH'(COLS),ROWS_WIDTH'(ROWS)});
         $display("[TB_PLL_WRAPPER] PASS array=%0dx%0d banks=%0d",ROWS,COLS,TANH_BANK_NUM);
         $finish;
     end

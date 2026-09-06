@@ -1,21 +1,31 @@
-# Programmable PLL release 04cc59a: verification and DC
+# Programmable PLL verification and DC (updated 2026-09-07)
 
-## Source baseline and local changes
+The filename is retained for existing links. Current settings follow cc21c83:
+both UARTs use 1 Mbps at their design clocks. The wrapper test now derives
+business bit periods from the package divider and each checked PLL clock period.
+The 2026-09-06 validation record below is historical, not a PASS for these edits.
+
+Local validation on 2026-09-07: the updated full wrapper test passed in Xilinx
+xsim 2018.3 using a temporary 4x4 array, real UART/core RTL, ideal PLL model and
+functional pad stubs. It checked 400/300/25/400 MHz with business bit periods
+1000/1333.3333/16000/1000 ns. No production RTL dimensions were changed.
+This verifies the baud-transition test flow only; full 40x40/80x80 wrapper
+regressions remain pending on the remote server.
+
+## Original source baseline and current directories
 
 Upstream: https://github.com/jieruiz/pbit_kings/tree/yanzenan_testversion_260724
 Commit: 04cc59a8900419961b78adcaf6f0d18fc7b3826d.
 Existing source and DC directories were not modified.
 
-New source directories:
-- pbit_kings_pll_cfg_40x40_04cc59a: 1600 spins, 400 shared tiles, 4 LUT banks, 5 snapshot pages.
+Current source directories:
+- pbit_kings_random_enhanced_40x40_5fe1932: 1600 spins, 400 shared tiles, 4 LUT banks, 5 snapshot pages; directory name retained after cc21c83.
 - pbit_kings_pll_cfg_80x80_04cc59a: 6400 spins, 1600 shared tiles, 16 LUT banks, 20 snapshot pages.
 
-The only functional RTL correction in addition to ROWS/COLS scaling is the
-configuration UART baud: upstream 04cc59a defaults BAUD to the business BAUD_RATE
-(10,000,000), and the wrapper did not override it. PLL_CFG_BAUD_RATE=115200 is
-now independent, used as the module default and explicitly passed by the wrapper.
-All other PLL protocol/controller behavior follows upstream.
-The 80x80 copy does not include a copied .git directory.
+The original 04cc59a integration separated configuration baud from business baud.
+Later upstream changes added XOR random extraction, UART framing/timeout handling
+and set both BAUD_RATE and PLL_CFG_BAUD_RATE to 1_000_000. The 80x80 branch
+retains its dimensions and corresponding problem row stride.
 
 | Core register field | 40x40 | 80x80 |
 |---|---|---|
@@ -30,26 +40,26 @@ fields, use the package constants above rather than old fixed six-bit host code.
 
 | Interface | Clock | Baud at 400 MHz | Request / response |
 |---|---|---|---|
-| Business UART | PLL CKOUT1 | 10 Mbps, divider 40 | 7 bytes: OP/STATUS + 16-bit address + 32-bit data |
-| PLL configuration UART | 25 MHz reference | 115200 bps, divider 217 | 4 bytes: OP/STATUS + 8-bit address + 16-bit data |
+| Business UART | PLL CKOUT1 | 1 Mbps, divider 400 | 7 bytes: OP/STATUS + 16-bit address + 32-bit data |
+| PLL configuration UART | 25 MHz reference | 1 Mbps, divider 25 | 4 bytes: OP/STATUS + 8-bit address + 16-bit data |
 
 See rtl/new_version/PLL_CONFIG.md and rtl/pll_register_file.xlsx for the PLL register map.
 The core is held in reset and PLL disabled after power-on. Read/write SHADOW,
 then write COMMAND=1 (APPLY), then read STATUS; an APPLY reply means accepted,
 not locked or completed. STATUS=0x0072 is completed without a recorded error.
 At 400 MHz, write SHADOW=0x0220. At 300 MHz, use 0x0218 with the SAME 25 MHz reference.
-Business divider stays 40, so its baud becomes 7.5 Mbps at 300 MHz.
+Business divider stays 400, so its baud becomes 750 kbps at 300 MHz.
 APPLY resets the core; reload the problem configuration before starting a new
 computation. Do not assume computation state survives a frequency change.
-The config UART stays 115200 at both frequencies. Bypass=0x0a20 gives 25 MHz core
-and 625 kbps business UART. STARTUP_DONE is a timer, NOT analog PLL LOCK.
+The config UART stays 1 Mbps at both frequencies. Bypass=0x0a20 gives 25 MHz core
+and 62.5 kbps business UART. STARTUP_DONE is a timer, NOT analog PLL LOCK.
 
 ## Test coverage and limits
 
 | TEST | What it checks |
 |---|---|
 | pll_regs | 4096 configurations, independent frequency-validity oracle, readback, BUSY rejection, atomic APPLY, missing reset feedback timeout and retry |
-| pll_uart | Real 25 MHz/115200 serial link, reset values, read/write, odd address/RO/opcode/command errors, sticky error clear, rejected APPLY, successful startup, production 20 ms partial-frame timeout |
+| pll_uart | Real 25 MHz/1 Mbps serial link, reset values, read/write, odd address/RO/opcode/command errors, sticky error clear, rejected APPLY, successful startup, production 20 ms partial-frame timeout |
 | pll_wrapper | Actual wrapper + actual full-size pbit_top, two physical UART paths, initial reset, 400/300 MHz/bypass/restart, last-node/last-edge/shared-tile-seed reads and writes, snapshot bit from last page |
 | rw | Existing business register/edge/node/seed tests, including high address bit at 80x80 |
 | 3x3 / majority / maxcut3x3 | Existing array functionality, majority-count cases and small MaxCut |
@@ -93,7 +103,7 @@ already under rtl/tb/problem_gen/inputs; no external problem data paths are need
 From the selected source root (not rtl/):
 
 ```bash
-cd /public3/home/t6s011227/pbit_kings_pll_cfg_40x40_04cc59a
+cd /public3/home/t6s011227/pbit_kings_random_enhanced_40x40_5fe1932
 sbatch --export=ALL,TEST=pll_regs run_sim_sbatch.sh
 sbatch --export=ALL,TEST=pll_uart run_sim_sbatch.sh
 sbatch --export=ALL,TEST=pll_wrapper run_sim_sbatch.sh
@@ -115,7 +125,23 @@ No shared files are deleted. Python 3.6+ is required; use python3 on the server.
 Results: source_root/sim_runs/TEST_JOBID/rtl/compile.log and sim_TEST.log.
 The script requires both successful exit and a TB PASS line.
 
-## DC upload and submission
+## Current DC upload and submission
+
+For current 1 Mbps RTL use the separately supplied
+dc_pbit_random_5fe1932_40_80_400MHz directory (its retained name now covers
+40/80/100). Upload it alongside the current 40x40 source above, then run:
+
+```bash
+cd /public3/home/t6s011227/dc_pbit_random_5fe1932_40_80_400MHz
+bash submit_dc_by_size.sh 40 80
+```
+
+Each task creates its own dimension-specific RTL copy. Reports use the cc21c83
+baseline label. See that directory's README for resources and library paths.
+Do not use the original 04cc59a DC scripts below unchanged: their baud checks
+expect the old configuration.
+
+## Historical DC setup (04cc59a)
 
 Upload these new script folders alongside the source folders:
 - dc_pbit_pll_cfg_40x40_400MHz_high_effort
@@ -144,7 +170,7 @@ Power without switching activity remains an estimate, not measured power.
 ## Timing intent
 
 - Reference pad clock: ref_clk, 40 ns. Config UART and PLL register/controller
-  paths are timed at 25 MHz. 115200 baud is not a separate clock.
+  paths are timed at 25 MHz. UART baud is not a separate clock.
 - PLL CKOUT1: generated clk, x16 of ref_clk, 2.5 ns. This is the selected
   0x0220 operating scenario, not a constraint that freezes programmable pins.
 - Do NOT case-analyze N, OD, SELECT, BP, EN or core_release during synthesis:
@@ -167,7 +193,7 @@ Power without switching activity remains an estimate, not measured power.
 Reference on why reset crossings need dedicated verification:
 https://www.synopsys.com/verification/static-and-formal-verification/vc-spyglass/vc-spyglass-rdc.html
 
-## Local validation record (2026-09-06)
+## Historical local validation record (2026-09-06, before baud updates)
 
 - Xilinx xsim 2018.3: TB_PLL_CFG_REGS PASS. All 4096 configurations tested;
   235 accepted, 3861 rejected; timeout/BUSY/retry checks passed.

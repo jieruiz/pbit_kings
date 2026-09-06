@@ -13,7 +13,7 @@
 | `REF_CLK_FREQ_HZ` | `25_000_000` | 外部参考时钟频率，Hz |
 | `CLK_FREQ_HZ` | `400_000_000` | 核心设计频率及默认 PLL 输出频率上限，Hz |
 | `PLL_CFG_BAUD_RATE` | `1_000_000` | 配置 UART 波特率，bps |
-| `BAUD_RATE` | `10_000_000` | 核心在设计频率下的业务 UART 波特率，bps |
+| `BAUD_RATE` | `1_000_000` | 核心在设计频率下的业务 UART 波特率，bps |
 | `PLL_CFG_BYTE_TIMEOUT_MS` | `20` | 配置域字节间超时时间，ms；同时决定两个域的默认超时周期数 |
 
 UART 使用 8N1：1 位起始位、8 位数据、无校验、1 位停止位，每个字节内低位先发。RTL 通过 `CLKS_PER_BIT = CLK_FREQ_HZ / BAUD_RATE` 计算整数位周期。

@@ -11,7 +11,7 @@
   "hardware": {
     "kings_rows": 40,
     "kings_cols": 40,
-    "rtl_cols": 40
+    "rtl_cols": 80
   },
   "run": {
     "num_runs": 1,

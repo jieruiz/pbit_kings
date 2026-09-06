@@ -1,7 +1,10 @@
 `ifndef UART_TX_8N1
 `define UART_TX_8N1
 import pbit_pkg::*;
-module uart_tx_8n1 (
+module uart_tx_8n1 #(
+    parameter int CLK_FREQ_HZ = pbit_pkg::CLK_FREQ_HZ,
+    parameter int BAUD_RATE = pbit_pkg::BAUD_RATE
+) (
     input  logic       clk,
     input  logic       rst_n,
 

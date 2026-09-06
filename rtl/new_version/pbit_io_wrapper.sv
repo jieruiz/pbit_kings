@@ -6,6 +6,8 @@ module pbit_io_wrapper (
     input  wire pad_rst_n_i,
     input  wire pad_uart_rx_i,
     inout  wire pad_uart_tx_o,
+    input  wire pad_pll_cfg_rx_i,
+    inout  wire pad_pll_cfg_tx_o,
     // PLL power nets: all VDD rails are 1.2 V, all VSS rails are ground.
     // Connect real PG networks in the physical flow, never tie-cell outputs.
     inout  wire pll_avdd,
@@ -16,16 +18,19 @@ module pbit_io_wrapper (
     inout  wire pll_dvss_drv
 );
 
-    // Fixed configuration: 25 MHz reference * 32 / 2 = 400 MHz core clock.
+    // Config UART: 25 MHz reference, 115200 baud. Default shadow: 400 MHz.
+    // PLL stays disabled and core stays reset until a valid APPLY command.
     // Hold pad_rst_n_i low until all PLL supplies and REFCLK are stable.
-    localparam int unsigned PLL_WAIT_CYCLES = REF_CLK_FREQ_HZ/1_000_000*15; // 15 us at 25 MHz
-    localparam int unsigned PLL_WAIT_WIDTH  = $clog2(PLL_WAIT_CYCLES);
 
     logic ref_clk;
     logic ref_rst_n;
-    logic pll_ready;
+    logic core_release;
     logic pll_core_arst_n;
-    logic [PLL_WAIT_WIDTH-1:0] pll_wait_count;
+    logic cfg_rx, cfg_tx, req_valid, req_write, resp_valid;
+    logic [7:0] req_addr, resp_status, pll_n;
+    logic [15:0] req_data, resp_data;
+    logic pll_en, pll_bp, pll_select;
+    logic [1:0] pll_od;
     logic core_clk;
     logic core_arst_n;
     logic core_rst_n;
@@ -98,12 +103,36 @@ module pbit_io_wrapper (
         .ST  (tie_lo)
     );
 
-    // EN is released on a reference-clock edge, after two reset-sync stages.
-    // Asserting external reset disables the PLL and restarts the full wait.
+    PDISDU u_pad_pll_cfg_rx (
+        .PAD(pad_pll_cfg_rx_i), .PU(tie_hi), .PD(tie_lo),
+        .C(cfg_rx), .IE(tie_hi), .ST(tie_hi)
+    );
+    PDBSDU u_pad_pll_cfg_tx (
+        .PAD(pad_pll_cfg_tx_o), .OE(tie_hi), .PU(tie_lo), .PD(tie_lo),
+        .A(cfg_tx), .S0(tie_lo), .S1(tie_lo), .S2(tie_lo),
+        .C(), .IE(tie_lo), .ST(tie_lo)
+    );
+
+    // Configuration domain remains alive while core reset is asserted.
     reset_sync_async_assert u_ref_reset_sync (
         .clk_i    (ref_clk),
         .arst_n_i (core_arst_n),
         .rst_n_o  (ref_rst_n)
+    );
+
+    pll_cfg_uart #(.REF_HZ(REF_CLK_FREQ_HZ)) u_pll_cfg_uart (
+        .clk(ref_clk), .rst_n(ref_rst_n), .rx_i(cfg_rx), .tx_o(cfg_tx),
+        .req_valid(req_valid), .req_write(req_write),
+        .req_addr(req_addr), .req_data(req_data),
+        .resp_valid(resp_valid), .resp_status(resp_status), .resp_data(resp_data)
+    );
+    pll_cfg_regs #(.REF_HZ(REF_CLK_FREQ_HZ)) u_pll_cfg_regs (
+        .clk(ref_clk), .rst_n(ref_rst_n),
+        .req_valid(req_valid), .req_write(req_write),
+        .req_addr(req_addr), .req_data(req_data),
+        .resp_valid(resp_valid), .resp_status(resp_status), .resp_data(resp_data),
+        .core_rst_n(core_rst_n), .pll_en(pll_en), .core_release(core_release),
+        .pll_n(pll_n), .pll_select(pll_select), .pll_bp(pll_bp), .pll_od(pll_od)
     );
 
     PLL_TOP u_pll (
@@ -114,36 +143,19 @@ module pbit_io_wrapper (
         .DVDD_DRV (pll_dvdd_drv),
         .DVSS_DRV (pll_dvss_drv),
         .REFCLK   (ref_clk),
-        .EN       (ref_rst_n),
-        .BP       (tie_lo),
-        .N        ({tie_lo, tie_lo, tie_hi, {5{tie_lo}}}), // 8'h20
-        .SELECT   (tie_lo),
-        .OD       ({tie_lo, tie_hi}),                     // divide by 2
+        .EN       (pll_en),
+        .BP       (pll_bp),
+        .N        (pll_n),
+        .SELECT   (pll_select),
+        .OD       (pll_od),
         .CKOUT1   (core_clk),
         .CKOUT2   (),
         .CKTST    ()
     );
 
-    // PLL has no LOCK pin. Count 375 complete reference periods after EN.
-    // The first increment occurs one full period after ref_rst_n rises.
-    // This timer assumes a continuous, stable 25 MHz reference; it is not
-    // a lock detector and cannot detect a missing reference or supply fault.
-    always_ff @(posedge ref_clk or negedge ref_rst_n) begin
-        if (!ref_rst_n) begin
-            pll_wait_count <= '0;
-            pll_ready      <= 1'b0;
-        end else if (!pll_ready) begin
-            if (pll_wait_count == PLL_WAIT_WIDTH'(PLL_WAIT_CYCLES - 1)) begin
-                pll_ready <= 1'b1;
-            end else begin
-                pll_wait_count <= pll_wait_count + 1'b1;
-            end
-        end
-    end
-
     // Hold the core in reset throughout PLL startup. Release only after
     // the wait and two CKOUT1 rising edges; assertion stays asynchronous.
-    assign pll_core_arst_n = core_arst_n & pll_ready;
+    assign pll_core_arst_n = core_arst_n & core_release;
 
     reset_sync_async_assert u_reset_sync (
         .clk_i    (core_clk),

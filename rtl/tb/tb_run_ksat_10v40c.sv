@@ -260,27 +260,32 @@ module tb;
         output logic [31:0] rdata
     );
         logic [7:0] rx_bytes [7];
-        uart_send_byte(op);
-        uart_send_byte(addr[15:8]);
-        uart_send_byte(addr[7:0]);
-        uart_send_byte(wdata[31:24]);
-        uart_send_byte(wdata[23:16]);
-        uart_send_byte(wdata[15:8]);
-        uart_send_byte(wdata[7:0]);
-
-        for (int idx = 0; idx < 7; idx++) begin
-            uart_receive_byte(rx_bytes[idx]);
-            case (idx)
-                0: status = status_e'(rx_bytes[idx]);
-                1: raddr[15:8] = rx_bytes[idx];
-                2: raddr[7:0] = rx_bytes[idx];
-                3: rdata[31:24] = rx_bytes[idx];
-                4: rdata[23:16] = rx_bytes[idx];
-                5: rdata[15:8] = rx_bytes[idx];
-                6: rdata[7:0] = rx_bytes[idx];
-                default: begin end
-            endcase
-        end
+        fork
+            begin
+                uart_send_byte(op);
+                uart_send_byte(addr[15:8]);
+                uart_send_byte(addr[7:0]);
+                uart_send_byte(wdata[31:24]);
+                uart_send_byte(wdata[23:16]);
+                uart_send_byte(wdata[15:8]);
+                uart_send_byte(wdata[7:0]);
+            end
+            begin
+                for (int idx = 0; idx < 7; idx++) begin
+                    uart_receive_byte(rx_bytes[idx]);
+                    case (idx)
+                        0: status = status_e'(rx_bytes[idx]);
+                        1: raddr[15:8] = rx_bytes[idx];
+                        2: raddr[7:0] = rx_bytes[idx];
+                        3: rdata[31:24] = rx_bytes[idx];
+                        4: rdata[23:16] = rx_bytes[idx];
+                        5: rdata[15:8] = rx_bytes[idx];
+                        6: rdata[7:0] = rx_bytes[idx];
+                        default: begin end
+                    endcase
+                end
+            end
+        join
         #(UART_BIT_TIME_NS);
     endtask
 

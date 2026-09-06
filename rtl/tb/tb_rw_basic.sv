@@ -201,27 +201,32 @@ module tb;
     );
         logic [7:0] rx_data;
 
-        uart_send_byte(op);
-        uart_send_byte(addr[15:8]);
-        uart_send_byte(addr[7:0]);
-        uart_send_byte(wdata[31:24]);
-        uart_send_byte(wdata[23:16]);
-        uart_send_byte(wdata[15:8]);
-        uart_send_byte(wdata[7:0]);
-
-        for (int idx = 0; idx < 7; idx++) begin
-            uart_receive_byte(rx_data);
-            case (idx)
-                0: status = status_e'(rx_data);
-                1: raddr[15:8] = rx_data;
-                2: raddr[7:0] = rx_data;
-                3: rdata[31:24] = rx_data;
-                4: rdata[23:16] = rx_data;
-                5: rdata[15:8] = rx_data;
-                6: rdata[7:0] = rx_data;
-                default: begin end
-            endcase
-        end
+        fork
+            begin
+                uart_send_byte(op);
+                uart_send_byte(addr[15:8]);
+                uart_send_byte(addr[7:0]);
+                uart_send_byte(wdata[31:24]);
+                uart_send_byte(wdata[23:16]);
+                uart_send_byte(wdata[15:8]);
+                uart_send_byte(wdata[7:0]);
+            end
+            begin
+                for (int idx = 0; idx < 7; idx++) begin
+                    uart_receive_byte(rx_data);
+                    case (idx)
+                        0: status = status_e'(rx_data);
+                        1: raddr[15:8] = rx_data;
+                        2: raddr[7:0] = rx_data;
+                        3: rdata[31:24] = rx_data;
+                        4: rdata[23:16] = rx_data;
+                        5: rdata[15:8] = rx_data;
+                        6: rdata[7:0] = rx_data;
+                        default: begin end
+                    endcase
+                end
+            end
+        join
 
         #(UART_BIT_TIME_NS);
     endtask

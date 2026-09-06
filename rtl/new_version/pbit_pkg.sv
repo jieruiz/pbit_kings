@@ -16,7 +16,8 @@ package pbit_pkg;
     parameter int CLK_FREQ_HZ = 400_000_000;
     parameter int BAUD_RATE = 10_000_000;
     // PLL configuration UART is independent of the high-speed core UART.
-    parameter int PLL_CFG_BAUD_RATE = 115_200;
+    parameter int PLL_CFG_BAUD_RATE = 1_000_000;
+    parameter int PLL_CFG_BYTE_TIMEOUT_MS = 20;
     parameter int N_SPIN = ROWS * COLS;
     parameter int SNAPSHOT_WIDTH = 320;
     parameter int SPIN_RDATA_REG_NUM = SNAPSHOT_WIDTH / 32;

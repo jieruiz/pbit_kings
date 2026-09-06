@@ -1,5 +1,5 @@
 // Simulation-only UART host. Use a real baud period, not the DUT divider.
-module uart_host #(parameter realtime BIT_NS = 1.0e9 / 115200.0) (
+module uart_host #(parameter realtime BIT_NS = 1.0e9 / 1_000_000.0) (
     input wire tx, output logic rx
 );
     timeunit 1ns;

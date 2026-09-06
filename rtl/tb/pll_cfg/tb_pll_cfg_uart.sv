@@ -1,6 +1,19 @@
 module tb_pll_cfg_uart;
     timeunit 1ns;
     timeprecision 1ps;
+    localparam int REF_HZ = pbit_pkg::REF_CLK_FREQ_HZ;
+    localparam int CORE_HZ = pbit_pkg::CLK_FREQ_HZ;
+    localparam int CFG_BAUD = pbit_pkg::PLL_CFG_BAUD_RATE;
+    localparam int BYTE_TIMEOUT_CYCLES =
+        int'((64'(REF_HZ) * pbit_pkg::PLL_CFG_BYTE_TIMEOUT_MS) / 1000);
+    localparam realtime REF_PERIOD_NS = 1.0e9 / REF_HZ;
+    localparam realtime CORE_PERIOD_NS = 1.0e9 / CORE_HZ;
+    localparam realtime UART_BIT_NS = 1.0e9 / CFG_BAUD;
+    // Production byte timeout plus settling margin, expressed in simulated time.
+    localparam realtime BYTE_TIMEOUT_WAIT_NS =
+        (BYTE_TIMEOUT_CYCLES + 1.0) * REF_PERIOD_NS + 20.0 * UART_BIT_NS;
+    localparam realtime WATCHDOG_NS =
+        BYTE_TIMEOUT_WAIT_NS + 4000.0 * UART_BIT_NS + 2000.0 * REF_PERIOD_NS;
     logic clk = 0, rst_n = 0;
     wire rx, tx, req_valid, req_write, resp_valid;
     wire [7:0] addr, status, pll_n;
@@ -9,10 +22,10 @@ module tb_pll_cfg_uart;
     wire [1:0] pll_od;
     logic core_clk = 0;
     wire core_rst_n;
-    always #20 clk = ~clk;
-    always #1.25 core_clk = ~core_clk;
-    uart_host host(.rx(rx), .tx(tx));
-    // No baud override: catch accidental use of the business UART baud rate.
+    always #(REF_PERIOD_NS / 2.0) clk = ~clk;
+    always #(CORE_PERIOD_NS / 2.0) core_clk = ~core_clk;
+    uart_host #(.BIT_NS(UART_BIT_NS)) host(.rx(rx), .tx(tx));
+    // Keep DUT defaults; host timing follows the package configuration baud.
     pll_cfg_uart dut_uart(.clk(clk), .rst_n(rst_n), .rx_i(rx), .tx_o(tx),
         .req_valid(req_valid), .req_write(req_write), .req_addr(addr), .req_data(data),
         .resp_valid(resp_valid), .resp_status(status), .resp_data(resp_data));
@@ -30,8 +43,8 @@ module tb_pll_cfg_uart;
             $fatal(1, "PLL UART req=%08h reply=%08h expected=%08h", request, reply, expected);
     endtask
     initial begin
-        #200; @(negedge clk); rst_n = 1;
-        #200;
+        repeat (5) @(negedge clk); rst_n = 1;
+        repeat (5) @(negedge clk);
         check(32'h0200_0000, 32'h0000_0220);
         check(32'h0206_0000, 32'h0006_0220);
         check(32'h0204_0000, 32'h0004_0000);
@@ -55,12 +68,13 @@ module tb_pll_cfg_uart;
         check(32'h0102_0001, 32'h0002_0000);
         check(32'h0204_0000, 32'h0004_0072);
         if (!pll_en || !core_rst_n) $fatal(1, "Valid APPLY did not start core");
-        // Timeout is tested at its production 20 ms value, without shortening it.
+        // Timeout is tested at its configured production value, without shortening it.
         host.send_byte(8'h01); host.send_byte(8'h00);
-        #21_000_000;
+        #(BYTE_TIMEOUT_WAIT_NS);
         check(32'h0200_0000, 32'h0000_0220);
-        $display("[TB_PLL_CFG_UART] PASS baud=115200 ref_hz=25000000 timeout_ms=20");
+        $display("[TB_PLL_CFG_UART] PASS baud=%0d ref_hz=%0d core_hz=%0d timeout_cycles=%0d",
+                 CFG_BAUD, REF_HZ, CORE_HZ, BYTE_TIMEOUT_CYCLES);
         $finish;
     end
-    initial begin #100_000_000; $fatal(1, "PLL UART watchdog timeout"); end
+    initial begin #(WATCHDOG_NS); $fatal(1, "PLL UART watchdog timeout"); end
 endmodule

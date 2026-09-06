@@ -1,6 +1,9 @@
 module tb_pll_cfg_regs;
     timeunit 1ns;
     timeprecision 1ps;
+    localparam int REF_HZ = pbit_pkg::REF_CLK_FREQ_HZ;
+    localparam int MAX_CORE_HZ = pbit_pkg::CLK_FREQ_HZ;
+    localparam realtime REF_PERIOD_NS = 1.0e9 / REF_HZ;
     logic clk = 0, rst_n = 0, req_valid = 0, req_write = 0;
     logic [7:0] addr = 0;
     logic [15:0] data = 0;
@@ -10,9 +13,10 @@ module tb_pll_cfg_regs;
     wire [15:0] resp_data;
     wire [1:0] pll_od;
     int accepted = 0, rejected = 0;
-    always #20 clk = ~clk;
+    always #(REF_PERIOD_NS / 2.0) clk = ~clk;
     // Short controller waits ONLY in this unit test; UART/wrapper use production waits.
-    pll_cfg_regs #(.WAIT_CYCLES(5), .RELEASE_TIMEOUT(8)) dut(
+    pll_cfg_regs #(.REF_HZ(REF_HZ), .MAX_CORE_HZ(MAX_CORE_HZ),
+                   .WAIT_CYCLES(5), .RELEASE_TIMEOUT(8)) dut(
         .clk(clk), .rst_n(rst_n), .req_valid(req_valid), .req_write(req_write),
         .req_addr(addr), .req_data(data), .resp_valid(resp_valid),
         .resp_status(status), .resp_data(resp_data), .core_rst_n(core_rst_n),
@@ -36,15 +40,16 @@ module tb_pll_cfg_regs;
     endtask
     initial begin : tests
         logic [15:0] reply;
-        int n, vco_mhz, expected_error;
-        // Independent integer-MHz oracle for every 12-bit configuration.
+        int n, expected_error;
+        longint unsigned vco_hz;
+        // Independent Hz-based oracle; keep PLL macro limits fixed.
         for (int cfg = 0; cfg < 4096; cfg++) begin
             reset_dut();
             n = cfg & 255;
-            vco_mhz = 25 * n * (((cfg >> 8) & 1) ? 2 : 1);
+            vco_hz = 64'(REF_HZ) * n * (((cfg >> 8) & 1) ? 2 : 1);
             expected_error = 0;
-            if (n < 17 || vco_mhz < 500 || vco_mhz > 1200) expected_error = 3;
-            else if (!(cfg & 2048) && vco_mhz > (400 << ((cfg >> 9) & 3))) expected_error = 4;
+            if (n < 17 || vco_hz < 500_000_000 || vco_hz > 1_200_000_000) expected_error = 3;
+            else if (!(cfg & 2048) && vco_hz > (64'(MAX_CORE_HZ) << ((cfg >> 9) & 3))) expected_error = 4;
             access_reg(1, 0, 16'(cfg), 0, reply);
             access_reg(1, 2, 1, expected_error ? 2 : 0, reply);
             if (expected_error) begin
@@ -83,5 +88,5 @@ module tb_pll_cfg_regs;
         $display("[TB_PLL_CFG_REGS] PASS configurations=4096 accepted=%0d rejected=%0d",accepted,rejected);
         $finish;
     end
-    initial begin #30_000_000; $fatal(1,"PLL register watchdog timeout"); end
+    initial begin #(750_000.0 * REF_PERIOD_NS); $fatal(1,"PLL register watchdog timeout"); end
 endmodule

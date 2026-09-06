@@ -7,7 +7,7 @@ import pbit_pkg::*;
 module pll_cfg_uart #(
     parameter int REF_HZ = pbit_pkg::REF_CLK_FREQ_HZ,
     parameter int BAUD = pbit_pkg::PLL_CFG_BAUD_RATE,
-    parameter int BYTE_TIMEOUT = REF_HZ / 50
+    parameter int BYTE_TIMEOUT = int'((64'(REF_HZ) * pbit_pkg::PLL_CFG_BYTE_TIMEOUT_MS) / 1000)
 ) (
     input logic clk, rst_n, rx_i,
     output wire tx_o,
@@ -49,7 +49,7 @@ module pll_cfg_uart #(
 
     uart_rx_8n1 #(.CLK_FREQ_HZ(REF_HZ), .BAUD_RATE(BAUD)) u_rx (
         .clk(clk), .rst_n(rst_n), .rx_i(rx_i),
-        .rx_data_o(rx_byte), .rx_valid_o(rx_valid));
+        .rx_data_o(rx_byte), .rx_valid_o(rx_valid), .rx_frame_err_o());
     uart_tx_8n1 #(.CLK_FREQ_HZ(REF_HZ), .BAUD_RATE(BAUD)) u_tx (
         .clk(clk), .rst_n(rst_n), .tx_data_i(tx_byte_q),
         .tx_valid_i(tx_start_q), .tx_o(tx_o), .tx_busy_o(tx_busy));

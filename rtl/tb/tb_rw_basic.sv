@@ -1,438 +1,248 @@
-`ifndef TB_RW_BASIC
-`define TB_RW_BASIC
+`timescale 1ns/1ps
 import pbit_pkg::*;
-
 module tb;
-    timeunit 1ns;
-    timeprecision 1ps;
-    // Preserve the 2.5 ns PLL-core period without integer truncation.
-    localparam realtime CLK_PERIOD_NS = 1_000_000_000.0 / CLK_FREQ_HZ;
-    localparam int unsigned UART_BIT_TIME_NS = 1_000_000_000 / BAUD_RATE;
-
-    localparam logic [7:0] OP_WRITE = 8'h01;
-    localparam logic [7:0] OP_READ  = 8'h02;
-
-    typedef enum logic [7:0] {
-        ST_OK       = 8'h00,
-        ST_BAD      = 8'h01,
-        ST_REG_ERR  = 8'h02,
-        ST_BUSY     = 8'h03
-    } status_e;
-
-    logic clk;
-    logic rst_n;
-    logic uart_rx_i;
-    logic uart_tx_o;
-    int unsigned error_count;
-
-    pbit_top u_pbit_top (
-        .clk       (clk),
-        .rst_n     (rst_n),
-        .uart_rx_i (uart_rx_i),
-        .uart_tx_o (uart_tx_o)
-    );
-
-    initial begin
-        clk = 1'b1;
-        forever #(CLK_PERIOD_NS / 2) clk = ~clk;
-    end
-
-    function automatic logic [31:0] pack_node_target(
-        input logic [TARGET_MODE_WIDTH-1:0]     mode,
-        input logic [NODE_TARGET_ROW_WIDTH-1:0] row,
-        input logic [NODE_TARGET_COL_WIDTH-1:0] col
-    );
-        pack_node_target = '0;
-        pack_node_target[TARGET_MODE_MSB:TARGET_MODE_LSB] = mode;
-        pack_node_target[NODE_TARGET_ROW_MSB:NODE_TARGET_ROW_LSB] = row;
-        pack_node_target[NODE_TARGET_COL_MSB:NODE_TARGET_COL_LSB] = col;
+    localparam int CPB = CLK_FREQ_HZ / BAUD_RATE;
+    localparam realtime CLK_PERIOD = 1s / real'(CLK_FREQ_HZ);
+    localparam realtime BIT_TIME = CPB * CLK_PERIOD;
+    logic clk = 0;
+    always #(CLK_PERIOD/2) clk = ~clk;
+    logic rst_n = 0, rx = 1;
+    wire tx;
+    int transactions = 0, phase_count = 0, request_count = 0;
+    logic [31:0] data;
+    bit [51:0] read_seen='0, write_seen='0;
+    // Independent register-map masks, not DUT packing helpers.
+    function automatic bit is_wo(input int addr);
+        return addr==0 || addr=='h80 || addr=='h90 || addr=='ha0;
     endfunction
-
-    function automatic logic [31:0] pack_node_cfg(
-        input logic init_valid,
-        input logic clamp_valid,
-        input logic bias_valid,
-        input logic init_spin,
-        input logic clamp_en,
-        input logic clamp_spin,
-        input logic bias_sign,
-        input logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_prob
-    );
-        pack_node_cfg = '0;
-        pack_node_cfg[INIT_VALID_MSB:INIT_VALID_LSB] = init_valid;
-        pack_node_cfg[CLAMP_VALID_MSB:CLAMP_VALID_LSB] = clamp_valid;
-        pack_node_cfg[BIAS_VALID_MSB:BIAS_VALID_LSB] = bias_valid;
-        pack_node_cfg[NODE_CFG_INIT_SPIN_MSB:NODE_CFG_INIT_SPIN_LSB] = init_spin;
-        pack_node_cfg[NODE_CFG_CLAMP_EN_MSB:NODE_CFG_CLAMP_EN_LSB] = clamp_en;
-        pack_node_cfg[NODE_CFG_CLAMP_SPIN_MSB:NODE_CFG_CLAMP_SPIN_LSB] = clamp_spin;
-        pack_node_cfg[NODE_CFG_BIAS_SIGN_MSB:NODE_CFG_BIAS_SIGN_LSB] = bias_sign;
-        pack_node_cfg[NODE_CFG_BIAS_PROB_MSB:NODE_CFG_BIAS_PROB_LSB] = bias_prob;
+    function automatic bit is_ro(input int addr);
+        return addr==8 || addr=='h84 || addr=='h94 || addr=='ha4 || addr>='ha8;
     endfunction
-
-    function automatic logic [NODE_CFG_W-1:0] expected_node_rdata_cfg(
-        input logic current_spin,
-        input logic clamp_en,
-        input logic clamp_spin,
-        input logic bias_sign,
-        input logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_prob
-    );
-        expected_node_rdata_cfg = {bias_prob, bias_sign, clamp_spin, clamp_en, current_spin};
+    function automatic logic [31:0] rw_mask(input int addr);
+        case(addr)
+            'h04: return 32'h1fffffff;
+            'h10: return 32'h0000000f;
+            'h74: return 32'h00001f1f;
+            'h78: return 32'h00000103;
+            'h7c: return 32'h0007ff07;
+            'h88: return 32'h00000003;
+            'h98: return 32'h00000307;
+            'h9c: return 32'h000001ff;
+            default: return (addr>='h14 && addr<='h30) ? 32'h1f1f1f1f : 32'hffffffff;
+        endcase
     endfunction
-
-    function automatic logic [31:0] pack_node_cmd(
-        input logic apply_cfg,
-        input logic apply_seed,
-        input logic load_node,
-        input logic clear_cfg_scope_en,
-        input logic clear_seed_scope_en,
-        input logic clear_local_all,
-        input logic readback_cfg,
-        input logic readback_seed
-    );
-        pack_node_cmd = '0;
-        pack_node_cmd[APPLY_CFG_MSB:APPLY_CFG_LSB] = apply_cfg;
-        pack_node_cmd[APPLY_SEED_MSB:APPLY_SEED_LSB] = apply_seed;
-        pack_node_cmd[LOAD_NODE_MSB:LOAD_NODE_LSB] = load_node;
-        pack_node_cmd[CLEAR_CFG_SCOPE_EN_MSB:CLEAR_CFG_SCOPE_EN_LSB] = clear_cfg_scope_en;
-        pack_node_cmd[CLEAR_SEED_SCOPE_EN_MSB:CLEAR_SEED_SCOPE_EN_LSB] = clear_seed_scope_en;
-        pack_node_cmd[CLEAR_LOCAL_ALL_MSB:CLEAR_LOCAL_ALL_LSB] = clear_local_all;
-        pack_node_cmd[READBACK_CFG_MSB:READBACK_CFG_LSB] = readback_cfg;
-        pack_node_cmd[READBACK_SEED_MSB:READBACK_SEED_LSB] = readback_seed;
-    endfunction
-
-    function automatic logic [31:0] pack_edge_target(
-        input logic [EDGE_TYPE_WIDTH-1:0]       edge_type,
-        input logic [EDGE_TARGET_ROW_WIDTH-1:0] row,
-        input logic [EDGE_TARGET_COL_WIDTH-1:0] col
-    );
-        pack_edge_target = '0;
-        pack_edge_target[EDGE_TYPE_MSB:EDGE_TYPE_LSB] = edge_type;
-        pack_edge_target[EDGE_TARGET_ROW_MSB:EDGE_TARGET_ROW_LSB] = row;
-        pack_edge_target[EDGE_TARGET_COL_MSB:EDGE_TARGET_COL_LSB] = col;
-    endfunction
-
-    function automatic logic [31:0] pack_edge_cfg(
-        input logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0] prob,
-        input logic sign,
-        input logic valid
-    );
-        pack_edge_cfg = '0;
-        pack_edge_cfg[EDGE_CFG_EDGE_VALID_MSB:EDGE_CFG_EDGE_VALID_LSB] = valid;
-        pack_edge_cfg[EDGE_CFG_EDGE_SIGN_MSB:EDGE_CFG_EDGE_SIGN_LSB] = sign;
-        pack_edge_cfg[EDGE_CFG_EDGE_PROB_MSB:EDGE_CFG_EDGE_PROB_LSB] = prob;
-    endfunction
-
-    function automatic logic [31:0] pack_edge_cmd(
-        input logic apply_edge,
-        input logic clear_edge,
-        input logic readback_edge
-    );
-        pack_edge_cmd = '0;
-        pack_edge_cmd[APPLY_EDGE_MSB:APPLY_EDGE_LSB] = apply_edge;
-        pack_edge_cmd[CLEAR_EDGE_MSB:CLEAR_EDGE_LSB] = clear_edge;
-        pack_edge_cmd[READBACK_EDGE_MSB:READBACK_EDGE_LSB] = readback_edge;
-    endfunction
-
-    task automatic report_mismatch(
-        input string tag,
-        input logic [31:0] actual,
-        input logic [31:0] expected
-    );
-        if (actual !== expected) begin
-            error_count++;
-            $error("[%s] actual=0x%08h expected=0x%08h time=%0t", tag, actual, expected, $time);
-        end
+    pbit_top dut (.clk(clk), .rst_n(rst_n), .uart_rx_i(rx), .uart_tx_o(tx));
+    always @(posedge clk) if (rst_n && dut.phase_start_w) phase_count++;
+    always @(posedge clk) if (rst_n && dut.cfg_req_valid_w && dut.cfg_req_ready_w) request_count++;
+    task automatic send_byte(input logic [7:0] value);
+        rx = 0; #(BIT_TIME);
+        for (int b=0;b<8;b++) begin rx=value[b]; #(BIT_TIME); end
+        rx=1; #(BIT_TIME);
     endtask
-
-    task automatic expect_status_ok(
-        input string tag,
-        input status_e status
-    );
-        if (status !== ST_OK) begin
-            error_count++;
-            $error("[%s] status=0x%02h expected ST_OK time=%0t", tag, status, $time);
-        end
+    task automatic receive_byte(output logic [7:0] value);
+        @(negedge tx);
+        #(BIT_TIME/2);
+        if (tx !== 0) $fatal(1,"UART start");
+        for (int b=0;b<8;b++) begin #(BIT_TIME); value[b]=tx; end
+        #(BIT_TIME);
+        if (tx !== 1) $fatal(1,"UART stop");
     endtask
-
-    task automatic uart_send_byte(
-        input logic [7:0] tx_data
-    );
-        uart_rx_i = 1'b0;
-        #(UART_BIT_TIME_NS);
-
-        for (int idx = 0; idx < 8; idx++) begin
-            uart_rx_i = tx_data[idx];
-            #(UART_BIT_TIME_NS);
-        end
-
-        uart_rx_i = 1'b1;
-        #(UART_BIT_TIME_NS);
-    endtask
-
-    task automatic uart_receive_byte(
-        output logic [7:0] rx_data
-    );
-        @(negedge uart_tx_o);
-        #(UART_BIT_TIME_NS / 2);
-        if (uart_tx_o !== 1'b0) begin
-            error_count++;
-            $error("[UART_TX] invalid start bit at time %0t", $time);
-        end
-
-        for (int idx = 0; idx < 8; idx++) begin
-            #(UART_BIT_TIME_NS);
-            rx_data[idx] = uart_tx_o;
-        end
-
-        #(UART_BIT_TIME_NS);
-        if (uart_tx_o !== 1'b1) begin
-            error_count++;
-            $error("[UART_TX] invalid stop bit at time %0t", $time);
-        end
-    endtask
-
-    task automatic uart_req(
-        input  logic [7:0]  op,
-        input  logic [15:0] addr,
-        input  logic [31:0] wdata,
-        output status_e     status,
-        output logic [15:0] raddr,
-        output logic [31:0] rdata
-    );
-        logic [7:0] rx_data;
-
+    task automatic access_reg(input logic [7:0] op, input logic [15:0] addr,
+                              input logic [31:0] value, output logic [31:0] result, input logic [7:0] expected_status=0);
+        logic [55:0] request, response;
+        logic [7:0] received;
+        request={op,addr,value}; response='0;
         fork
             begin
-                uart_send_byte(op);
-                uart_send_byte(addr[15:8]);
-                uart_send_byte(addr[7:0]);
-                uart_send_byte(wdata[31:24]);
-                uart_send_byte(wdata[23:16]);
-                uart_send_byte(wdata[15:8]);
-                uart_send_byte(wdata[7:0]);
+                for (int b=6;b>=0;b--) send_byte(request[b*8+:8]);
             end
             begin
-                for (int idx = 0; idx < 7; idx++) begin
-                    uart_receive_byte(rx_data);
-                    case (idx)
-                        0: status = status_e'(rx_data);
-                        1: raddr[15:8] = rx_data;
-                        2: raddr[7:0] = rx_data;
-                        3: rdata[31:24] = rx_data;
-                        4: rdata[23:16] = rx_data;
-                        5: rdata[15:8] = rx_data;
-                        6: rdata[7:0] = rx_data;
-                        default: begin end
-                    endcase
+                for (int b=6;b>=0;b--) begin
+                    receive_byte(received); response[b*8+:8]=received;
                 end
             end
         join
-
-        #(UART_BIT_TIME_NS);
+        if (response[55:32] !== {expected_status,addr}) $fatal(1,"UART response addr=%h response=%h",addr,response);
+        result=response[31:0]; transactions++;
+        if (addr<='hcc && addr[1:0]==0) begin
+            if(op==1) write_seen[addr/4]=1; else read_seen[addr/4]=1;
+        end
+        #(BIT_TIME*2);
     endtask
-
-    task automatic write_reg(
-        input logic [15:0] addr,
-        input logic [31:0] data,
-        input string tag
-    );
-        status_e status;
-        logic [15:0] raddr;
-        logic [31:0] rdata;
-
-        uart_req(OP_WRITE, addr, data, status, raddr, rdata);
-        expect_status_ok({tag, " write status"}, status);
-        report_mismatch({tag, " write addr"}, {16'd0, raddr}, {16'd0, addr});
-        report_mismatch({tag, " write rdata"}, rdata, 32'd0);
+    task automatic wr(input logic [15:0] addr,input logic [31:0] value);
+        logic [31:0] ignored;
+        access_reg(1,addr,value,ignored);
     endtask
-
-    task automatic read_reg(
-        input  logic [15:0] addr,
-        output logic [31:0] data,
-        input  string tag
-    );
-        status_e status;
-        logic [15:0] raddr;
-
-        uart_req(OP_READ, addr, 32'd0, status, raddr, data);
-        expect_status_ok({tag, " read status"}, status);
-        report_mismatch({tag, " read addr"}, {16'd0, raddr}, {16'd0, addr});
+    task automatic check_read(input logic [15:0] addr,input logic [31:0] expected);
+        logic [31:0] result;
+        access_reg(2,addr,0,result);
+        if(result !== expected) $fatal(1,"Read %h got %h expected %h",addr,result,expected);
     endtask
-
-    task automatic read_expect(
-        input logic [15:0] addr,
-        input logic [31:0] expected,
-        input string tag
-    );
-        logic [31:0] data;
-
-        read_reg(addr, data, tag);
-        report_mismatch(tag, data, expected);
+    task automatic reset_dut;
+        @(negedge clk); rst_n=0; rx=1;
+        repeat(8) @(negedge clk); rst_n=1;
+        #(BIT_TIME*2);
     endtask
-
-    task automatic check_edge_rw(
-        input logic [EDGE_TYPE_WIDTH-1:0] edge_type,
-        input logic [EDGE_TARGET_ROW_WIDTH-1:0] row,
-        input logic [EDGE_TARGET_COL_WIDTH-1:0] col,
-        input logic [EDGE_CFG_EDGE_PROB_WIDTH-1:0] prob,
-        input logic sign,
-        input string tag
-    );
-        logic [31:0] edge_target_word;
-        logic [31:0] edge_cfg_word;
-
-        edge_target_word = pack_edge_target(edge_type, row, col);
-        edge_cfg_word = pack_edge_cfg(prob, sign, 1'b1);
-
-        write_reg(A_EDGE_TARGET, edge_target_word, {tag, " edge target"});
-        read_expect(A_EDGE_TARGET, edge_target_word, {tag, " edge target staging"});
-        write_reg(A_EDGE_CFG, edge_cfg_word, {tag, " edge cfg"});
-        read_expect(A_EDGE_CFG, edge_cfg_word, {tag, " edge cfg staging"});
-
-        write_reg(A_EDGE_CMD, pack_edge_cmd(1'b1, 1'b0, 1'b0), {tag, " edge apply"});
-        repeat (4) @(posedge clk);
-        write_reg(A_EDGE_CMD, pack_edge_cmd(1'b0, 1'b0, 1'b1), {tag, " edge readback trigger"});
-        repeat (4) @(posedge clk);
-        read_expect(A_EDGE_RDATA, edge_cfg_word, {tag, " edge applied readback"});
+    task automatic clear_errors;
+        wr('h0c,'1); check_read('h0c,0);
     endtask
-
     initial begin
-        logic [31:0] node_cfg_target_word;
-        logic [31:0] node_seed_target_word;
-        logic [31:0] node_cfg_word;
-        logic [31:0] node_seed_word;
-        logic [31:0] node_rdata_expected;
-        logic [31:0] high_node_target_word;
-        logic [31:0] high_node_cfg_word;
-        logic [31:0] high_node_rdata_expected;
-        logic [31:0] snapshot_last_addr_word;
-
-        error_count = 0;
-        uart_rx_i = 1'b1;
-        rst_n = 1'b0;
-
-        repeat (20) @(posedge clk);
-        rst_n = 1'b1;
-        repeat (20) @(posedge clk);
-
-        read_expect(A_ARRAY_PARAM,
-                    {N_SPIN_WIDTH'(N_SPIN), COLS_WIDTH'(COLS), ROWS_WIDTH'(ROWS)},
-                    "array param");
-
-        node_cfg_target_word = pack_node_target(TARGET_MODE_LOCAL,
-                                                  NODE_TARGET_ROW_WIDTH'(5),
-                                                  NODE_TARGET_COL_WIDTH'(6));
-        // Shared LFSR seeds are addressed by 2x2 tile coordinate, so node (5,6)
-        // uses seed tile (2,3), not physical node coordinate (5,6).
-        node_seed_target_word = pack_node_target(TARGET_MODE_LOCAL,
-                                                   NODE_TARGET_ROW_WIDTH'(2),
-                                                   NODE_TARGET_COL_WIDTH'(3));
-        node_cfg_word = pack_node_cfg(.init_valid(1'b1),
-                                      .clamp_valid(1'b1),
-                                      .bias_valid(1'b1),
-                                      .init_spin(1'b1),
-                                      .clamp_en(1'b1),
-                                      .clamp_spin(1'b0),
-                                      .bias_sign(1'b1),
-                                      .bias_prob(7'h35));
-        node_seed_word = 32'h1234_abcd;
-        // NODE_RDATA_CFG bit0 reports current spin_q, not the original INIT_SPIN field.
-        // With clamp enabled and clamp_spin=0, the applied node readback spin is 0.
-        node_rdata_expected = {{(32-NODE_CFG_W){1'b0}},
-                               expected_node_rdata_cfg(.current_spin(1'b0),
-                                                       .clamp_en(1'b1),
-                                                       .clamp_spin(1'b0),
-                                                       .bias_sign(1'b1),
-                                                       .bias_prob(7'h35))};
-
-        write_reg(A_NODE_TARGET, node_cfg_target_word, "node cfg target");
-        read_expect(A_NODE_TARGET, node_cfg_target_word, "node cfg target staging");
-        write_reg(A_NODE_CFG, node_cfg_word, "node cfg");
-        read_expect(A_NODE_CFG, node_cfg_word, "node cfg staging");
-
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node cfg apply");
-        repeat (4) @(posedge clk);
-
-        write_reg(A_NODE_TARGET, node_seed_target_word, "node seed target");
-        read_expect(A_NODE_TARGET, node_seed_target_word, "node seed target staging");
-        write_reg(A_NODE_SEED, node_seed_word, "node seed");
-        read_expect(A_NODE_SEED, node_seed_word, "node seed staging");
-
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "node seed apply");
-        repeat (4) @(posedge clk);
-
-        write_reg(A_NODE_TARGET, node_cfg_target_word, "node cfg readback target");
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0), "node cfg readback trigger");
-        repeat (4) @(posedge clk);
-        read_expect(A_NODE_RDATA_CFG, node_rdata_expected, "node applied cfg readback");
-
-        write_reg(A_NODE_TARGET, node_seed_target_word, "node seed readback target");
-        write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b1), "node seed readback trigger");
-        repeat (4) @(posedge clk);
-        read_expect(A_NODE_RDATA_SEED, node_seed_word, "node applied seed readback");
-
-        // Exercise the seventh row/column address bit used by the 80x80 array.
-        if ((ROWS > 64) && (COLS > 64)) begin
-            high_node_target_word = pack_node_target(TARGET_MODE_LOCAL,
-                                                     NODE_TARGET_ROW_WIDTH'(ROWS-1),
-                                                     NODE_TARGET_COL_WIDTH'(COLS-1));
-            report_mismatch("80x80 high node target packing",
-                            high_node_target_word, 32'h004f_4f02);
-            high_node_cfg_word = pack_node_cfg(.init_valid(1'b1),
-                                                .clamp_valid(1'b1),
-                                                .bias_valid(1'b1),
-                                                .init_spin(1'b0),
-                                                .clamp_en(1'b1),
-                                                .clamp_spin(1'b1),
-                                                .bias_sign(1'b0),
-                                                .bias_prob(7'h2a));
-            high_node_rdata_expected = {{(32-NODE_CFG_W){1'b0}},
-                                        expected_node_rdata_cfg(.current_spin(1'b1),
-                                                                .clamp_en(1'b1),
-                                                                .clamp_spin(1'b1),
-                                                                .bias_sign(1'b0),
-                                                                .bias_prob(7'h2a))};
-
-            write_reg(A_NODE_TARGET, high_node_target_word, "high node target");
-            read_expect(A_NODE_TARGET, high_node_target_word, "high node target staging");
-            write_reg(A_NODE_CFG, high_node_cfg_word, "high node cfg");
-            write_reg(A_NODE_CMD, pack_node_cmd(1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0), "high node cfg apply");
-            repeat (4) @(posedge clk);
-            write_reg(A_NODE_CMD, pack_node_cmd(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b1, 1'b0), "high node cfg readback trigger");
-            repeat (4) @(posedge clk);
-            read_expect(A_NODE_RDATA_CFG, high_node_rdata_expected, "high node applied cfg readback");
-
-            check_edge_rw(EDGE_TYPE_EDGE_H,
-                          EDGE_TARGET_ROW_WIDTH'(ROWS-1),
-                          EDGE_TARGET_COL_WIDTH'(COLS-2),
-                          7'h35, 1'b1, "high H");
-            report_mismatch("80x80 high H target packing",
-                            pack_edge_target(EDGE_TYPE_EDGE_H,
-                                             EDGE_TARGET_ROW_WIDTH'(ROWS-1),
-                                             EDGE_TARGET_COL_WIDTH'(COLS-2)),
-                            32'h004e_4f00);
+        reset_dut();
+        // A snapshot must be captured before reading its non-reset data register.
+        wr('h00,1<<SNAPSHOT_LATCH_LSB);
+        for(int a=0;a<='hcc;a+=4) begin
+            if(is_wo(a)) begin
+                access_reg(2,16'(a),0,data,2);
+                if(data!==0) $fatal(1,"WO read must return zero");
+                check_read('h0c,1<<RD_TO_WO_LSB); clear_errors();
+                wr(16'(a),0); wr(16'(a),32'h80000000);
+            end else if(a=='h08) check_read(16'(a),1<<SNAPSHOT_VALID_LSB);
+            else check_read(16'(a),0);
         end
-
-        snapshot_last_addr_word = '0;
-        snapshot_last_addr_word[SNAPSHOT_ADDR_MSB:SNAPSHOT_ADDR_LSB] =
-            SNAPSHOT_ADDR_WIDTH'(SPIN_ADDR_MAX-1);
-        report_mismatch("80x80 last snapshot address packing",
-                        snapshot_last_addr_word, 32'(SPIN_ADDR_MAX-1));
-        write_reg(A_SNAPSHOT_ADDR, snapshot_last_addr_word, "last snapshot address");
-        read_expect(A_SNAPSHOT_ADDR, snapshot_last_addr_word, "last snapshot address staging");
-
-        check_edge_rw(EDGE_TYPE_EDGE_H,   EDGE_TARGET_ROW_WIDTH'(3), EDGE_TARGET_COL_WIDTH'(4), 7'h21, 1'b1, "H");
-        check_edge_rw(EDGE_TYPE_EDGE_V,   EDGE_TARGET_ROW_WIDTH'(4), EDGE_TARGET_COL_WIDTH'(5), 7'h22, 1'b0, "V");
-        check_edge_rw(EDGE_TYPE_EDGE_DSE, EDGE_TARGET_ROW_WIDTH'(5), EDGE_TARGET_COL_WIDTH'(6), 7'h23, 1'b1, "DSE");
-        check_edge_rw(EDGE_TYPE_EDGE_DSW, EDGE_TARGET_ROW_WIDTH'(6), EDGE_TARGET_COL_WIDTH'(7), 7'h24, 1'b0, "DSW");
-
-        if (error_count == 0) begin
-            $display("[TB_RW_BASIC] PASS");
-        end else begin
-            $fatal(1, "[TB_RW_BASIC] FAIL error_count=%0d", error_count);
+        // All ordinary RW registers: zero, ones and complementary patterns.
+        // Check every peer register after writes to expose address aliasing.
+        for(int pass=0;pass<4;pass++) begin
+            for(int a=4;a<='hcc;a+=4) if(!is_ro(a) && !is_wo(a) && a!='h0c) begin
+                logic [31:0] pattern;
+                case(pass)
+                    0:pattern='0; 1:pattern='1;
+                    2:pattern=32'haaaaaaaa ^ (32'(a)*32'h01010101);
+                    3:pattern=32'h55555555 ^ (32'(a)*32'h01010101);
+                endcase
+                wr(16'(a),pattern);
+            end
+            for(int a=4;a<='hcc;a+=4) if(!is_ro(a) && !is_wo(a) && a!='h0c) begin
+                logic [31:0] pattern;
+                case(pass)
+                    0:pattern='0; 1:pattern='1;
+                    2:pattern=32'haaaaaaaa ^ (32'(a)*32'h01010101);
+                    3:pattern=32'h55555555 ^ (32'(a)*32'h01010101);
+                endcase
+                check_read(16'(a),pattern & rw_mask(a));
+            end
         end
-
+        // RO writes reject and preserve existing contents.
+        for(int a=4;a<='hcc;a+=4) if(is_ro(a)) begin
+            logic [31:0] before_value;
+            access_reg(2,16'(a),0,before_value);
+            access_reg(1,16'(a),'1,data,2);
+            check_read('h0c,1<<WR_TO_RO_LSB);
+            clear_errors(); check_read(16'(a),before_value);
+        end
+        // Misaligned/unmapped accesses, sticky errors and selective W1C.
+        access_reg(2,16'h0001,0,data,2);
+        access_reg(1,16'h00d0,0,data,2);
+        access_reg(2,16'h0080,0,data,2);
+        check_read('h0c,(1<<ADDR_ERR_LSB)|(1<<RD_TO_WO_LSB));
+        wr('h0c,1<<ADDR_ERR_LSB); check_read('h0c,1<<RD_TO_WO_LSB);
+        wr('h0c,0); check_read('h0c,1<<RD_TO_WO_LSB);
+        wr(0,1<<ERROR_CLEAR_LSB); check_read('h0c,0);
+        reset_dut();
+        // Configure a nonzero bit in every snapshot data word of page zero.
+        for(int word_idx=0;word_idx<10;word_idx++) begin
+            int cell_idx;
+            cell_idx=word_idx*4;
+            wr('h74,32'((cell_idx/COLS) | ((cell_idx%COLS)<<8)));
+            wr('h78,0); wr('h7c,32'h7ff07);
+            wr('h80,(1<<APPLY_CFG_LSB)|(1<<READBACK_CFG_LSB));
+            check_read('h84,32'h7ff);
+        end
+        wr('h88,3); wr('h8c,0);
+        wr('h90,(1<<APPLY_SEED_LSB)|(1<<READBACK_SEED_LSB));
+        check_read('h94,1); check_read('h8c,0);
+        wr('h8c,32'h12345678); wr('h90,1<<APPLY_SEED_LSB);
+        wr('h90,1<<READBACK_SEED_LSB); check_read('h94,32'h12345678);
+        for(int edge_type=0;edge_type<6;edge_type++) begin
+            wr('h98,32'(edge_type | (3<<8))); wr('h9c,32'h1ff);
+            wr('ha0,(1<<APPLY_EDGE_LSB)|(1<<READBACK_EDGE_LSB));
+            check_read('ha4,32'h1ff);
+            wr('ha0,(1<<CLEAR_EDGE_LSB)|(1<<READBACK_EDGE_LSB));
+            check_read('ha4,32'h1fe);
+        end
+        access_reg(2,'h08,0,data);
+        if((data & 32'h198)!==32'h98) $fatal(1,"DONE/CFG_BUSY %h",data);
+        check_read('h08,0);
+        for(int page=0;page<SPIN_ADDR_MAX;page++) begin
+            wr('h10,32'(page)); wr(0,1<<SNAPSHOT_LATCH_LSB);
+            check_read('h08,1<<SNAPSHOT_VALID_LSB);
+            check_read('h08,0); // RC does not clear the captured data below.
+            for(int word_idx=0;word_idx<10;word_idx++)
+                check_read(16'('ha8+4*word_idx),page==0 ? 1 : 0);
+        end
+        // Invalid commands complete locally and never reach the array.
+        begin
+            int before_count;
+            before_count=request_count;
+            wr('h74,31);
+            access_reg(1,'h80,1<<READBACK_CFG_LSB,data,2);
+            check_read('h84,0); check_read('h0c,1<<UNIT_ROW_OOR_LSB); clear_errors();
+            wr('h74,31<<8);
+            access_reg(1,'h90,1<<READBACK_SEED_LSB,data,2);
+            check_read('h94,0); check_read('h0c,1<<UNIT_COL_OOR_LSB); clear_errors();
+            wr('h74,0); wr('h98,6);
+            access_reg(1,'ha0,1<<READBACK_EDGE_LSB,data,2);
+            check_read('ha4,0); check_read('h0c,1<<EDGE_TYPE_ERR_LSB); clear_errors();
+            wr('h74,(COLS-1)<<8); wr('h98,4);
+            access_reg(1,'ha0,1<<APPLY_EDGE_LSB,data,2);
+            check_read('h0c,1<<EDGE_BOUNDARY_ERR_LSB); clear_errors();
+            if(request_count!=before_count) $fatal(1,"Illegal request reached array");
+        end
+        wr('h10,15); access_reg(1,0,1<<SNAPSHOT_LATCH_LSB,data,2);
+        check_read('h0c,1<<SNAP_ADDR_OOR_LSB); clear_errors();
+        access_reg(1,0,1<<RUN_START_LSB,data,2);
+        check_read('h0c,1<<RUN_WITHOUT_CFG_DONE_LSB); clear_errors();
+        // Inject a runtime-status window to exercise the UART error response
+        // without a long stochastic run. The normal run below remains end-to-end.
+        wr('h04,32'h1f004e20);
+        force dut.run_busy_w = 1'b1;
+        for(int pattern_idx=0;pattern_idx<3;pattern_idx++) begin
+            logic [31:0] attempted;
+            // Change only NUM_SWEEP, only NUM_MAJORITY, then write reserved bits.
+            case(pattern_idx)
+                0: attempted=32'h1f000000;
+                1: attempted=32'h00004e20;
+                default: attempted=32'h80000000;
+            endcase
+            if(!dut.run_busy_w) $fatal(1,"Runtime test ended too early");
+            access_reg(1,'h04,attempted,data,2);
+            check_read('h04,32'h1f004e20);
+            check_read('h0c,1<<GLOBAL_CFG_WHILE_RUN_LSB);
+            clear_errors();
+        end
+        // Every runtime CMD write is illegal, including no-op and reserved-only.
+        wr('h74,0); wr('h98,0);
+        begin
+            int before_requests;
+            before_requests=request_count;
+            for(int target=0;target<3;target++) begin
+                int command_addr,error_bit;
+                case(target)
+                    0:begin command_addr='h80;error_bit=NODE_CFG_WHILE_RUN_LSB;end
+                    1:begin command_addr='h90;error_bit=SEED_CFG_WHILE_RUN_LSB;end
+                    default:begin command_addr='ha0;error_bit=EDGE_CFG_WHILE_RUN_LSB;end
+                endcase
+                for(int bits_value=0;bits_value<9;bits_value++) begin
+                    access_reg(1,16'(command_addr),bits_value==8 ? 32'h80000000 : 32'(bits_value),data,2);
+                    check_read('h0c,32'd1<<error_bit);
+                    clear_errors();
+                end
+            end
+            if(request_count!=before_requests) $fatal(1,"Runtime CMD escaped to array");
+        end
+        release dut.run_busy_w;
+        @(negedge clk);
+        // New parameters become writable after completion.
+        wr('h04,0); wr(0,1<<CFG_DONE_SET_LSB);
+        wr(0,1<<RUN_START_LSB);
+        access_reg(2,'h08,0,data);
+        if(!data[RUN_DONE_LSB] || data[RUN_BUSY_LSB] || data[ERROR_LSB]) $fatal(1,"Run status %h",data);
+        if(phase_count!=2) $fatal(1,"Expected two phases");
+        wr(0,1<<RUN_DONE_CLEAR_LSB); check_read('h08,1<<CFG_DONE_LSB);
+        wr(0,1<<CFG_DONE_CLEAR_LSB); check_read('h08,0);
+        check_read('h0c,0);
+        if(!(&read_seen) || !(&write_seen)) $fatal(1,"Incomplete address coverage R=%h W=%h",read_seen,write_seen);
+        $display("PASS rw_basic: all 52 registers read/write exercised, %0d UART transactions; masks, permissions, W1C/RC, NODE/SEED/EDGE, all snapshot pages and run",transactions);
         $finish;
     end
+    initial begin #1s; $fatal(1,"Timeout"); end
 endmodule
-`endif

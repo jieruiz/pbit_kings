@@ -4,59 +4,35 @@ import pbit_pkg::*;
 module lfsr32_rng32 (
     input  logic                             clk,
     input  logic                             rst_n,
-    input  logic                             soft_rstn_i,
-
-    input  logic                             local_seed_node_we_i,
-    input  logic                             local_seed_clr_pulse_i,
-    input  logic                             local_seed_clr_all_pulse_i,
-    input  logic                             node_load_i,
-    input  logic [NODE_SEED_WIDTH-1:0]       global_node_seed_i,
-    input  logic                             global_node_seed_vld_i,                      
-    input  logic [NODE_SEED_WIDTH-1:0]       row_node_seed_i,
-    input  logic                             row_node_seed_vld_i,
-    input  logic [NODE_SEED_WIDTH-1:0]       local_node_seed_i,
+    input  logic                             seed_we_i,
+    input  logic [SEED_WIDTH-1:0]             seed_i,
     input  logic                             en_i,
-    output logic [NODE_SEED_WIDTH-1:0]       rnd32_o
+    output logic [SEED_WIDTH-1:0]             rnd32_o
 );
 
-    logic [NODE_SEED_WIDTH-1:0] state_q, state_d;
-    logic                       state_en;
-    logic                       feedback;
-    logic                       local_node_seed_vld_q, local_node_seed_vld_d;
+    logic [SEED_WIDTH-1:0] state_q, state_d;
+    logic                  state_en;
+    logic                  feedback;
 
-    // Prevent each LFSR seed source from loading the all-zero lock-up state.
-    assign feedback              = state_q[31] ^ state_q[21] ^ state_q[1] ^ state_q[0];
-    assign state_d               = local_seed_node_we_i? local_node_seed_i:
-                                   node_load_i         ? local_node_seed_vld_q ? state_q:
-                                                         row_node_seed_vld_i   ? row_node_seed_i:
-                                                         global_node_seed_vld_i? global_node_seed_i:
-                                                         state_q:
-                                   en_i                ? {state_q[30:0], feedback}:
-                                                         state_q;
-    assign state_en              = local_seed_node_we_i | node_load_i | en_i;
-    assign rnd32_o               = state_q;
-    assign local_node_seed_vld_d = local_seed_node_we_i? 1'b1:
-                                   local_seed_clr_pulse_i | local_seed_clr_all_pulse_i? 1'b0:
-                                   local_node_seed_vld_q;
+    // One state is shared by node r/r+4. Advance on every enabled phase cycle.
+    // Preserve the original 32-bit Fibonacci sequence and balance the XOR tree.
+    assign feedback = (state_q[31] ^ state_q[21]) ^ (state_q[1] ^ state_q[0]);
 
-    dffre #(.WIDTH(NODE_SEED_WIDTH),
-           .RESET_VALUE({{(NODE_SEED_WIDTH-1){1'b0}}, 1'b1})
+    // pbit_reg converts zero seeds to one and suppresses seed writes throughout a run.
+    // An accepted seed write has priority over advance; otherwise the FF enable holds state.
+    assign state_d  = seed_we_i ? seed_i : {state_q[30:0], feedback};
+    assign state_en = seed_we_i | en_i;
+    // Seed readback observes this current state without a separate shadow register.
+    assign rnd32_o = state_q;
+
+    dffre #(.WIDTH(SEED_WIDTH),
+           .RESET_VALUE({{(SEED_WIDTH-1){1'b0}}, 1'b1})
     ) state_ff (
         .clk(clk),
         .rst_n(rst_n),
         .en_i(state_en),
         .d_i(state_d),
         .q_o(state_q)
-    );
-
-    dffsr #(.WIDTH(1),
-            .RESET_VALUE(1'b0)
-    ) local_node_seed_vld_ff (
-        .clk(clk),
-        .rst_n(rst_n),
-        .soft_rstn_i(soft_rstn_i),
-        .d_i(local_node_seed_vld_d),
-        .q_o(local_node_seed_vld_q)
     );
 endmodule
 `endif

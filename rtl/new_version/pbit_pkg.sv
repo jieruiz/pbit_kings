@@ -21,7 +21,6 @@ package pbit_pkg;
     parameter int N_SPIN = ROWS * COLS * NODE_IN_UNIT;
     parameter int SNAPSHOT_WIDTH = 320;
     parameter int SPIN_RDATA_REG_NUM = SNAPSHOT_WIDTH / 32;
-    // SCALED_STRUCT_SYNC: Round up snapshot pages; the current 1600 spins still occupy five pages.
     parameter int SPIN_ADDR_MAX = (N_SPIN + SNAPSHOT_WIDTH - 1) / SNAPSHOT_WIDTH;
     parameter int I0_LEVEL_WIDTH = 5;
     parameter int SWEEP_INTERVAL_WIDTH = 16;
@@ -34,10 +33,10 @@ package pbit_pkg;
     parameter int SWEEP_ROUND_WIDTH = $clog2(SWEEP_ROUND_NUM);
     // Unit target reg
     parameter logic [15:0] A_UNIT_TARGET = 16'h0074;
-    parameter UNIT_TARGET_ROW_WIDTH = 5;
+    parameter UNIT_TARGET_ROW_WIDTH = $clog2(ROWS);
     parameter UNIT_TARGET_ROW_LSB = 0;
     parameter UNIT_TARGET_ROW_MSB = UNIT_TARGET_ROW_LSB + UNIT_TARGET_ROW_WIDTH - 1;
-    parameter UNIT_TARGET_COL_WIDTH = 5;
+    parameter UNIT_TARGET_COL_WIDTH = $clog2(COLS);
     parameter UNIT_TARGET_COL_LSB = 8;
     parameter UNIT_TARGET_COL_MSB = UNIT_TARGET_COL_LSB + UNIT_TARGET_COL_WIDTH - 1;
 

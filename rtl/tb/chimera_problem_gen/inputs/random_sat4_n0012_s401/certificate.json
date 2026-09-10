@@ -1,0 +1,20 @@
+{
+  "method": "planted_assignment_plus_complete_pattern_cores",
+  "assignment": [
+    1,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    1,
+    1,
+    0,
+    0
+  ],
+  "core_clause_indices": [],
+  "minimum_unsatisfied": 0,
+  "maximum_satisfied": 96
+}

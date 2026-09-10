@@ -241,7 +241,7 @@ PLL相关模块需先编译 `pbit_pkg.sv` 和公共触发器，再编译 UART、
 |---|---|---|
 | `filelist_pll_cfg_regs.f` | `tb_pll_cfg_regs` | 寄存器和配置合法性 |
 | `filelist_pll_cfg_uart.f` | `tb_pll_cfg_uart` | 配置串口、报文及生产参数超时 |
-| `filelist_pll_wrapper.f` | `tb_pll_wrapper` | 真实40×40核心与PLL控制集成 |
+| `filelist_pll_wrapper.f` | `tb_pll_wrapper` | 参数化Chimera核心与PLL控制集成 |
 | `filelist_uart_rx_framing.f` | `tb_uart_rx_framing` | 两域RX停止位、持续低电平与恢复 |
 | `filelist_uart_byte_timeout.f` | `tb_uart_byte_timeout` | 业务半帧、逐字节计时及超时边界 |
 
@@ -255,7 +255,7 @@ sbatch --export=ALL,TEST=pll_wrapper run_sim_sbatch.sh
 
 脚本将RTL复制到独立的 `sim_runs` 任务目录，保存编译和仿真日志，并检查PASS标记。新增两个UART专项TB尚未加入该脚本的TEST分支，可在独立仿真目录使用对应filelist和顶层运行。本次没有在集群执行以上命令。
 
-默认wrapper filelist使用 `tb/pll_cfg/pll_functional_model.sv` 理想PLL和 `io_functional_stubs.sv` 功能IO桩。脚本允许通过 `PLL_SIM_MODEL` 指定厂商PLL仿真模型，以替换理想PLL；替换时IO仍使用功能桩。厂商模型及其依赖需要另行提供，不能将PLL综合黑盒声明当作仿真模型，也不能同时编译多个同名PLL实现。
+默认wrapper filelist使用 `tb/pll_cfg/pll_functional_model.sv` 理想PLL和 `io_functional_stubs.sv` 功能IO桩。当前Chimera wrapper TB覆盖25 MHz参考时钟、配置UART、400 MHz时钟测量、15 us启动等待、25 MHz旁路及400 MHz恢复、核心复位同步释放，以及业务UART下的节点/种子/边配置、两轮运行和末端p-bit快照。脚本允许通过 `PLL_SIM_MODEL` 和 `IO_SIM_MODEL` 分别指定厂商PLL与IO Verilog模型，以替换相应理想模型；核心库tie cell仍使用独立功能桩。厂商模型及其依赖需要另行提供，不能将综合黑盒声明当作仿真模型，也不能同时编译多个同名实现。
 
 2026-09-06 本机 ModelSim 功能验证记录：
 

@@ -45,15 +45,31 @@ if [ "$TEST" = problem ]; then
   esac
   python3 "tb/problem_gen/$GENERATOR" --spec "$SPEC"
 fi
-if [ "$TEST" = pll_wrapper ] && [ -n "${PLL_SIM_MODEL:-}" ]; then
-  test -r "$PLL_SIM_MODEL"
-  # Use exactly one PLL implementation, never a DC black-box declaration.
-  sed '\|^./tb/pll_cfg/pll_functional_model.sv$|d' "$LIST" > filelist_vendor_pll.f
-  printf '%s\n' "$PLL_SIM_MODEL" >> filelist_vendor_pll.f
-  LIST=filelist_vendor_pll.f
-  echo "Vendor PLL model: $PLL_SIM_MODEL"
-else
-  echo "Wrapper tests use an ideal behavioral PLL and functional pad stubs, not analog models."
+if [ "$TEST" = pll_wrapper ]; then
+  if [ -n "${PLL_SIM_MODEL:-}" ] || [ -n "${IO_SIM_MODEL:-}" ]; then
+    cp "$LIST" filelist_external_models.f
+    LIST=filelist_external_models.f
+  fi
+  if [ -n "${PLL_SIM_MODEL:-}" ]; then
+    test -r "$PLL_SIM_MODEL"
+    # Use exactly one PLL implementation, never a DC black-box declaration.
+    sed -i '\|^./tb/pll_cfg/pll_functional_model.sv$|d' "$LIST"
+    printf '+incdir+%s\n' "$(dirname "$PLL_SIM_MODEL")" >> "$LIST"
+    printf '%s\n' "$PLL_SIM_MODEL" >> "$LIST"
+    echo "Vendor PLL model: $PLL_SIM_MODEL"
+  else
+    echo "PLL model: ideal digital model"
+  fi
+  if [ -n "${IO_SIM_MODEL:-}" ]; then
+    test -r "$IO_SIM_MODEL"
+    # Keep the core tie-cell stubs, but replace only PDISDU/PDBSDU.
+    sed -i '\|^./tb/pll_cfg/io_functional_stubs.sv$|d' "$LIST"
+    printf '+incdir+%s\n' "$(dirname "$IO_SIM_MODEL")" >> "$LIST"
+    printf '%s\n' "$IO_SIM_MODEL" >> "$LIST"
+    echo "Vendor IO model: $IO_SIM_MODEL"
+  else
+    echo "IO model: ideal digital pad stubs"
+  fi
 fi
 sha256sum new_version/*.sv common/*.sv > source_sha256.txt
 vcs -full64 -sverilog -debug_access+all -kdb -timescale=1ns/1ps \

@@ -29,8 +29,12 @@ case "$test_name" in
         filelist=filelist_error_paths.f
         top=tb_error_paths
         ;;
+    probability_modes)
+        filelist=filelist_probability_modes.f
+        top=tb_probability_modes
+        ;;
     *)
-        echo "Unknown test '$test_name'; use uart_end_to_end, config_boundaries or error_paths" >&2
+        echo "Unknown test '$test_name'; use uart_end_to_end, config_boundaries, error_paths or probability_modes" >&2
         exit 2
         ;;
 esac

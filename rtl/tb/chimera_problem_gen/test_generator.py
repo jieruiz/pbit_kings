@@ -51,6 +51,10 @@ class GeneratorTests(unittest.TestCase):
                     schedule="linear", i0_start=0.1, i0_end=4.0)
                 manifest = g.generate(args)
                 self.assertEqual(sum(s["sweeps"] for s in manifest["stages"]), 200)
+                self.assertEqual(manifest["probability_comparison"], {
+                    "edge": "valid && (random_7bit <= probability_code)",
+                    "bias": "random_7bit < probability_code"
+                })
                 program = [int(v, 16) for v in (Path(args.output) / "config_0.mem").read_text().split()]
                 p, chains, h, couplings, scale, quant, target = g.load_case(case)
                 unit, node, edge, seed, payload = 0, 0, 0, 0, {}

@@ -271,7 +271,11 @@ def generate(args):
                     transport="register bus by default; +UART enables serial transport",
                     sign_convention="MAC=-J*s-h; RTL sign bit one means positive contribution",
                     initial_state="Full 3200 spins and 1600 sorted unique seeds, matching Python source algorithm",
-                    bias_placement="source, no redistribution or replication")
+                    bias_placement="source, no redistribution or replication",
+                    probability_comparison={
+                        "edge": "valid && (random_7bit <= probability_code)",
+                        "bias": "random_7bit < probability_code"
+                    })
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print("[GEN_CHIMERA] case={} logical={} physical_used={} J={} all_edges={} target={} scale={}".format(
         args.case, len(chains), len(chain_nodes), len(couplings), len(list(all_edges())), target, scale))

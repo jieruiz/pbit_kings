@@ -14,20 +14,23 @@ module pbit_control (
     output logic phase_busy_o,
     output logic phase_done_o,
     output logic lfsr_en_o,
+    output logic contrib_en_o,
     output logic mac_en_o,
     output logic spin_sum_en_o,
     output logic majority_en_o
 );
-    typedef enum logic [1:0] {
+    typedef enum logic [2:0] {
         S_IDLE,
         S_CALC,
-        S_DRAIN,
+        S_DRAIN_MAC,
+        S_DRAIN_SAMPLE,
         S_COMMIT
     } state_e;
 
     state_e                         state_q, state_d;
     logic [NUM_MAJORITY_WIDTH-1:0]  trial_left_q, trial_left_d;
     logic                           trial_left_en;
+    logic                           contrib_en, contrib_en_dly;
     logic                           macsum_en, macsum_en_dly;
     logic                           spin_sum_en;
     logic                           majority_en;
@@ -39,10 +42,13 @@ module pbit_control (
                 else state_d = S_IDLE;
             end
             S_CALC: begin
-                if(trial_left_q == '0) state_d = S_DRAIN;
+                if(trial_left_q == '0) state_d = S_DRAIN_MAC;
                 else state_d = S_CALC;
             end
-            S_DRAIN: begin
+            S_DRAIN_MAC: begin
+                state_d = S_DRAIN_SAMPLE;
+            end
+            S_DRAIN_SAMPLE: begin
                 state_d = S_COMMIT;
             end
             S_COMMIT: begin
@@ -54,16 +60,18 @@ module pbit_control (
         endcase
     end
 
-    // Zero executes the final MAC. Hold the counter at zero rather than wrap.
+    // Zero captures the final contribution set. Hold the counter at zero rather than wrap.
     assign trial_left_d   = (state_q == S_IDLE)? num_majority_i: trial_left_q - {{(NUM_MAJORITY_WIDTH-1){1'b0}}, 1'b1};
     assign trial_left_en  = ((state_q == S_IDLE) && phase_start_i) || ((state_q == S_CALC) && (trial_left_q != '0));
-    assign macsum_en     = (state_q == S_CALC);
-    // Delay MAC enable one cycle; collect the last sample in DRAIN before COMMIT.
+    assign contrib_en    = (state_q == S_CALC);
+    assign macsum_en     = contrib_en_dly;
+    // Two valid stages: contribution capture -> MAC sum -> sample accumulation.
     assign spin_sum_en   = macsum_en_dly;
     assign majority_en   = (state_q == S_COMMIT);
-    // Advance from first MAC through commit (N+2 edges), excluding the start edge.
+    // Advance from first contribution capture through commit (N+3 edges), excluding the start edge.
     assign phase_busy_o = (state_q != S_IDLE);
     assign lfsr_en_o = phase_busy_o;
+    assign contrib_en_o  = contrib_en;
     assign mac_en_o      = macsum_en;
     assign spin_sum_en_o = spin_sum_en;
     assign majority_en_o = majority_en;
@@ -82,6 +90,11 @@ module pbit_control (
         .en_i(trial_left_en),
         .d_i(trial_left_d),
         .q_o(trial_left_q)
+    );
+
+    dffr #(.WIDTH(1)) contrib_en_ff (
+        .clk(clk), .rst_n(rst_n),
+        .d_i(contrib_en), .q_o(contrib_en_dly)
     );
 
     dffr #(.WIDTH(1)

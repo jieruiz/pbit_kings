@@ -37,6 +37,7 @@ module unit_cell (
     // ------------------------------------------------------------
     input  logic                                    active_col_i,
     input  logic                                    lfsr_en_i,
+    input  logic                                    contrib_en_i,
     input  logic                                    mac_en_i,
     input  logic                                    spin_sum_en_i,
     input  logic                                    majority_en_i,
@@ -209,6 +210,7 @@ module unit_cell (
                 .edge_valid_i    (edge_valid_w),
                 .edge_sign_i     (edge_sign_w),
                 .edge_prob_i     (edge_prob_w),
+                .contrib_en_i    (contrib_en_i),
                 .macsum_en_i     (mac_en_i),
                 .macsum_o        (macsum_w[row])
             );
@@ -286,6 +288,7 @@ module unit_cell_last_row (
     // ------------------------------------------------------------
     input  logic                                    active_col_i,
     input  logic                                    lfsr_en_i,
+    input  logic                                    contrib_en_i,
     input  logic                                    mac_en_i,
     input  logic                                    spin_sum_en_i,
     input  logic                                    majority_en_i,
@@ -485,6 +488,7 @@ module unit_cell_last_row (
                 .edge_valid_i    (edge_valid_w),
                 .edge_sign_i     (edge_sign_w),
                 .edge_prob_i     (edge_prob_w),
+                .contrib_en_i    (contrib_en_i),
                 .macsum_en_i     (mac_en_i),
                 .macsum_o        (macsum_w[row])
             );
@@ -562,6 +566,7 @@ module unit_cell_last_col (
     // ------------------------------------------------------------
     input  logic                                    active_col_i,
     input  logic                                    lfsr_en_i,
+    input  logic                                    contrib_en_i,
     input  logic                                    mac_en_i,
     input  logic                                    spin_sum_en_i,
     input  logic                                    majority_en_i,
@@ -761,6 +766,7 @@ module unit_cell_last_col (
                 .edge_valid_i    (edge_valid_w),
                 .edge_sign_i     (edge_sign_w),
                 .edge_prob_i     (edge_prob_w),
+                .contrib_en_i    (contrib_en_i),
                 .macsum_en_i     (mac_en_i),
                 .macsum_o        (macsum_w[row])
             );
@@ -838,6 +844,7 @@ module unit_cell_corner (
     // ------------------------------------------------------------
     input  logic                                    active_col_i,
     input  logic                                    lfsr_en_i,
+    input  logic                                    contrib_en_i,
     input  logic                                    mac_en_i,
     input  logic                                    spin_sum_en_i,
     input  logic                                    majority_en_i,
@@ -1017,6 +1024,7 @@ module unit_cell_corner (
                 .edge_valid_i    (edge_valid_w),
                 .edge_sign_i     (edge_sign_w),
                 .edge_prob_i     (edge_prob_w),
+                .contrib_en_i    (contrib_en_i),
                 .macsum_en_i     (mac_en_i),
                 .macsum_o        (macsum_w[row])
             );

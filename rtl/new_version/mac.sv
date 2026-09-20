@@ -15,6 +15,7 @@ module mac (
     input logic [MAC_EDGE_NUM-1:0] edge_sign_i,
     input wire [EDGE_CFG_EDGE_PROB_WIDTH-1:0] edge_prob_i [0:MAC_EDGE_NUM-1],
 
+    input logic contrib_en_i,
     input logic macsum_en_i,
     output logic signed [MACSUM_WIDTH-1:0] macsum_o
 );
@@ -22,6 +23,7 @@ module mac (
     logic [NODE_CFG_BIAS_PROB_WIDTH-1:0] bias_rand_w;
     logic accept_bias_w;
     logic signed [1:0] contrib_w [0:MAC_EDGE_NUM];
+    logic signed [1:0] contrib_q [0:MAC_EDGE_NUM];
     logic signed [2:0] pair_w [0:2];
     logic signed [MACSUM_WIDTH-1:0] half_w [0:1];
     logic signed [MACSUM_WIDTH-1:0] macsum_d;
@@ -70,18 +72,30 @@ module mac (
     generate
         for (pair_idx = 0; pair_idx < 3; pair_idx = pair_idx + 1) begin : GEN_PAIR_SUM
             assign pair_w[pair_idx] =
-                $signed({contrib_w[2*pair_idx][1], contrib_w[2*pair_idx]}) +
-                $signed({contrib_w[2*pair_idx+1][1], contrib_w[2*pair_idx+1]});
+                $signed({contrib_q[2*pair_idx][1], contrib_q[2*pair_idx]}) +
+                $signed({contrib_q[2*pair_idx+1][1], contrib_q[2*pair_idx+1]});
         end
     endgenerate
     assign half_w[0] = $signed({pair_w[0][2], pair_w[0]}) +
                        $signed({pair_w[1][2], pair_w[1]});
     assign half_w[1] = $signed({pair_w[2][2], pair_w[2]}) +
-                       $signed({{(MACSUM_WIDTH-2){contrib_w[6][1]}}, contrib_w[6]});
+                       $signed({{(MACSUM_WIDTH-2){contrib_q[6][1]}}, contrib_q[6]});
     assign macsum_d = half_w[0] + half_w[1];
     assign macsum_o = $signed(macsum_q);
 
-    // Preserve enabled-register behavior and one-clock latency; no reset.
+    // Stage 1 captures six edge contributions and one bias contribution.
+    // Valid enables are reset in the BANK controller; data needs no reset.
+    genvar term_idx;
+    generate
+        for (term_idx = 0; term_idx <= MAC_EDGE_NUM; term_idx = term_idx + 1) begin : GEN_CONTRIB_REG
+            dffe #(.WIDTH(2)) contrib_ff (
+                .clk(clk), .en_i(contrib_en_i),
+                .d_i(contrib_w[term_idx]), .q_o(contrib_q[term_idx])
+            );
+        end
+    endgenerate
+
+    // Stage 2 sums the preceding cycle's registered contributions.
     dffe #(.WIDTH(MACSUM_WIDTH)
     ) macsum_ff (
         .clk  (clk),

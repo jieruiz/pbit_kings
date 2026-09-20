@@ -52,8 +52,10 @@ module pbit_bank #(
     logic phase_accept_w, phase_q;
     logic [I0_LEVEL_WIDTH-1:0] i0_level_q;
     logic [NUM_MAJORITY_WIDTH-1:0] vote_threshold_d, vote_threshold_q;
-    logic [LUT_WIDTH-1:0] pos_thr_by_abs_w [1:7];
-    logic lfsr_en_w, mac_en_w, spin_sum_en_w, majority_en_w;
+    logic threshold_load_q;
+    logic [LUT_WIDTH-1:0] pos_thr_by_abs_d [1:7];
+    logic [LUT_WIDTH-1:0] pos_thr_by_abs_q [1:7];
+    logic lfsr_en_w, contrib_en_w, mac_en_w, spin_sum_en_w, majority_en_w;
 
     typedef enum logic [1:0] {S_IDLE, S_EXEC, S_RESP} cfg_state_e;
     cfg_state_e cfg_state_q, cfg_state_d;
@@ -79,12 +81,13 @@ module pbit_bank #(
         .clk(clk), .rst_n(rst_n), .phase_start_i(phase_start_i),
         .num_majority_i(num_majority_i),
         .phase_busy_o(phase_busy_o), .phase_done_o(phase_done_o),
-        .lfsr_en_o(lfsr_en_w), .mac_en_o(mac_en_w),
+        .lfsr_en_o(lfsr_en_w), .contrib_en_o(contrib_en_w), .mac_en_o(mac_en_w),
         .spin_sum_en_o(spin_sum_en_w), .majority_en_o(majority_en_w)
     );
-    // Combinational LUT driven by the held I0 code. h=0 remains local to each cell.
+    // E0 captures I0; E1 registers thresholds and the first contribution set.
+    // E2 registers the first MAC sum; E3 accumulates the first proposal. h=0 remains local to each cell.
     tanh_threshold_bank u_tanh_threshold_bank (
-        .i0_level_i(i0_level_q), .pos_thr_by_abs_o(pos_thr_by_abs_w)
+        .i0_level_i(i0_level_q), .pos_thr_by_abs_o(pos_thr_by_abs_d)
     );
 
     // C1: capture request. C2: execute. C3: capture response. C4: owner consumes.
@@ -192,9 +195,10 @@ module pbit_bank #(
                             .cfg_edge_number_i(cfg_req_q.payload.object_idx[EDGE_TARGET_NUMBER_WIDTH-1:0]),
                             .cfg_edge_i(cfg_req_q.payload.wdata[EDGE_CFG_PACKED_WIDTH-1:0]),
                             .edge_rdata_o(edge_rdata_w),
-                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w), .mac_en_i(mac_en_w),
+                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w),
+                            .contrib_en_i(contrib_en_w), .mac_en_i(mac_en_w),
                             .spin_sum_en_i(spin_sum_en_w), .majority_en_i(majority_en_w),
-                            .pos_thr_by_abs_i(pos_thr_by_abs_w), .vote_threshold_i(vote_threshold_q),
+                            .pos_thr_by_abs_i(pos_thr_by_abs_q), .vote_threshold_i(vote_threshold_q),
                             .up_spin_i(up_spin_w), .down_spin_i(down_spin_w),
                             .left_spin_i(left_spin_w), .right_spin_i(right_spin_w), .spin_o(spin_o[r][c]),
                             .up_edge_cfg_i(up_cfg_w), .left_edge_cfg_i(left_cfg_w),
@@ -217,9 +221,10 @@ module pbit_bank #(
                             .cfg_edge_number_i(cfg_req_q.payload.object_idx[EDGE_TARGET_NUMBER_WIDTH-1:0]),
                             .cfg_edge_i(cfg_req_q.payload.wdata[EDGE_CFG_PACKED_WIDTH-1:0]),
                             .edge_rdata_o(edge_rdata_w),
-                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w), .mac_en_i(mac_en_w),
+                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w),
+                            .contrib_en_i(contrib_en_w), .mac_en_i(mac_en_w),
                             .spin_sum_en_i(spin_sum_en_w), .majority_en_i(majority_en_w),
-                            .pos_thr_by_abs_i(pos_thr_by_abs_w), .vote_threshold_i(vote_threshold_q),
+                            .pos_thr_by_abs_i(pos_thr_by_abs_q), .vote_threshold_i(vote_threshold_q),
                             .up_spin_i(up_spin_w), .down_spin_i(down_spin_w),
                             .left_spin_i(left_spin_w), .right_spin_i(right_spin_w), .spin_o(spin_o[r][c]),
                             .up_edge_cfg_i(up_cfg_w), .left_edge_cfg_i(left_cfg_w),
@@ -242,9 +247,10 @@ module pbit_bank #(
                             .cfg_edge_number_i(cfg_req_q.payload.object_idx[EDGE_TARGET_NUMBER_WIDTH-1:0]),
                             .cfg_edge_i(cfg_req_q.payload.wdata[EDGE_CFG_PACKED_WIDTH-1:0]),
                             .edge_rdata_o(edge_rdata_w),
-                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w), .mac_en_i(mac_en_w),
+                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w),
+                            .contrib_en_i(contrib_en_w), .mac_en_i(mac_en_w),
                             .spin_sum_en_i(spin_sum_en_w), .majority_en_i(majority_en_w),
-                            .pos_thr_by_abs_i(pos_thr_by_abs_w), .vote_threshold_i(vote_threshold_q),
+                            .pos_thr_by_abs_i(pos_thr_by_abs_q), .vote_threshold_i(vote_threshold_q),
                             .up_spin_i(up_spin_w), .down_spin_i(down_spin_w),
                             .left_spin_i(left_spin_w), .right_spin_i(right_spin_w), .spin_o(spin_o[r][c]),
                             .up_edge_cfg_i(up_cfg_w), .left_edge_cfg_i(left_cfg_w),
@@ -267,9 +273,10 @@ module pbit_bank #(
                             .cfg_edge_number_i(cfg_req_q.payload.object_idx[EDGE_TARGET_NUMBER_WIDTH-1:0]),
                             .cfg_edge_i(cfg_req_q.payload.wdata[EDGE_CFG_PACKED_WIDTH-1:0]),
                             .edge_rdata_o(edge_rdata_w),
-                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w), .mac_en_i(mac_en_w),
+                            .active_col_i(active_col_w), .lfsr_en_i(lfsr_en_w),
+                            .contrib_en_i(contrib_en_w), .mac_en_i(mac_en_w),
                             .spin_sum_en_i(spin_sum_en_w), .majority_en_i(majority_en_w),
-                            .pos_thr_by_abs_i(pos_thr_by_abs_w), .vote_threshold_i(vote_threshold_q),
+                            .pos_thr_by_abs_i(pos_thr_by_abs_q), .vote_threshold_i(vote_threshold_q),
                             .up_spin_i(up_spin_w), .down_spin_i(down_spin_w),
                             .left_spin_i(left_spin_w), .right_spin_i(right_spin_w), .spin_o(spin_o[r][c]),
                             .up_edge_cfg_i(up_cfg_w), .left_edge_cfg_i(left_cfg_w),
@@ -322,6 +329,21 @@ module pbit_bank #(
     dffre #(.WIDTH(I0_LEVEL_WIDTH)) i0_level_ff (
         .clk(clk), .rst_n(rst_n), .en_i(phase_accept_w), .d_i(i0_level_i), .q_o(i0_level_q)
     );
+
+    // Reset the load pulse; threshold data is written before any valid sample.
+    dffr #(.WIDTH(1)) threshold_load_ff (
+        .clk(clk), .rst_n(rst_n), .d_i(phase_accept_w), .q_o(threshold_load_q)
+    );
+
+    genvar h;
+    generate
+        for (h = 1; h <= 7; h = h + 1) begin : GEN_THRESHOLD_REG
+            dffe #(.WIDTH(LUT_WIDTH)) threshold_ff (
+                .clk(clk), .en_i(threshold_load_q),
+                .d_i(pos_thr_by_abs_d[h]), .q_o(pos_thr_by_abs_q[h])
+            );
+        end
+    endgenerate
 
     dffre #(.WIDTH(NUM_MAJORITY_WIDTH)) vote_threshold_ff (
         .clk(clk), .rst_n(rst_n), .en_i(phase_accept_w),

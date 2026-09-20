@@ -35,17 +35,10 @@ module mac (
         .edge_valid_i  (edge_valid_i),
         .accept_o      (accept_w)
     );
-    // Preserve the original bias random-bit mapping and <= comparison.
+    // Edges retain <= with valid gating; bias uses < so code zero is exact zero.
     assign bias_rand_w = {rnd32_i[12], rnd32_i[10], rnd32_i[8],
                           rnd32_i[6], rnd32_i[4], rnd32_i[2], rnd32_i[0]};
-    edge_prob_compare #(
-        .WIDTH(NODE_CFG_BIAS_PROB_WIDTH)
-    ) u_bias_prob_compare (
-        .rand_i   (bias_rand_w),
-        .prob_i   (bias_prob_i),
-        .valid_i  (1'b1),
-        .accept_o (accept_bias_w)
-    );
+    assign accept_bias_w = (bias_rand_w < bias_prob_i);
 
     genvar edge_idx;
     generate

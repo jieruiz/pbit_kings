@@ -1,0 +1,9 @@
+{
+  "model_revision": "chimera-pipeline-20260920-edge-le-bias-lt-cycle-exact-v2",
+  "case": "dense_cut_n0024_s101",
+  "runs": 1,
+  "sweeps": 32,
+  "majority": 5,
+  "rows": 32,
+  "instance_dir": "C:\\Users\\86134\\Documents\\a_P_BIT\\p_bit_chimera\\chimera_3200_benchmarks\\instances\\dense_cut_n0024_s101"
+}

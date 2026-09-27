@@ -1,0 +1,4 @@
+-f filelist_pbit_top_chimera.f
++incdir+tb/chimera_pipeline_generated
+tb/chimera_pipeline_problem_harness.sv
+tb/tb_chimera_pipeline_problem.sv

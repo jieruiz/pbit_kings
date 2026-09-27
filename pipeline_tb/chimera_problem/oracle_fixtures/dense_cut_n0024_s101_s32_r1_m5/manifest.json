@@ -1,0 +1,161 @@
+{
+  "ROWS": 20,
+  "COLS": 20,
+  "N": 3200,
+  "CHAINS": 24,
+  "CHAIN_NODES": 282,
+  "VARIABLES": 24,
+  "EDGES": 276,
+  "CLAUSES": 0,
+  "LITERALS": 0,
+  "SAT": 0,
+  "TARGET": 834,
+  "SWEEPS": 32,
+  "RUNS": 1,
+  "MAJORITY": 5,
+  "COMMANDS": 57811,
+  "SEED_MASTER": 2461,
+  "INIT_SEED": 314592,
+  "case": "dense_cut_n0024_s101",
+  "source_sha256": {
+    "certificate.json": "831cc85a4e78293e6aeff0b783cf6476819a84fc357855e2c0b36b59b65e325b",
+    "embedding.json": "09ae0b7cad3636c33a4a544c85cda7ce517d4a7fb76dc5994694964b717cb70f",
+    "physical_ising.json": "49989feb8ebcd36c00fce78263bd5ead74f749ce384eda88ea73950359d1ceaa",
+    "problem.json": "2d741431f1cc00cfb3f78f55923603f5488a46af30faa48346dd1a67672b3dda",
+    "../anneal_i0_32_dec.txt": "273cbea3c0973f503b202276ea16e72617cb36bd7cb9aa9d1c715595124dd17a"
+  },
+  "quantization_scale": 257,
+  "physical_edges": 534,
+  "all_hardware_edges": 9440,
+  "zeroed_nonzero_coefficients": 0,
+  "stages": [
+    {
+      "i0_id": 0,
+      "coefficient": 0.1,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 1,
+      "coefficient": 0.193650794,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 3,
+      "coefficient": 0.380952381,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 4,
+      "coefficient": 0.500002951,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 5,
+      "coefficient": 0.568253968,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 7,
+      "coefficient": 0.783338374,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 8,
+      "coefficient": 0.849206349,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 9,
+      "coefficient": 0.942857143,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 10,
+      "coefficient": 1.036507937,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 11,
+      "coefficient": 1.223809524,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 12,
+      "coefficient": 1.411111111,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 13,
+      "coefficient": 1.692063492,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 14,
+      "coefficient": 1.973015873,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 15,
+      "coefficient": 2.16031746,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 16,
+      "coefficient": 2.253968254,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 17,
+      "coefficient": 2.441269841,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 18,
+      "coefficient": 2.534920635,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 19,
+      "coefficient": 2.815873016,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 20,
+      "coefficient": 3.096825397,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 21,
+      "coefficient": 3.377777778,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 22,
+      "coefficient": 3.565079365,
+      "sweeps": 2
+    },
+    {
+      "i0_id": 23,
+      "coefficient": 3.752380952,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 24,
+      "coefficient": 3.897045343,
+      "sweeps": 1
+    },
+    {
+      "i0_id": 25,
+      "coefficient": 4.033333333,
+      "sweeps": 1
+    }
+  ],
+  "transport": "register bus by default; +UART enables serial transport",
+  "sign_convention": "MAC=-J*s-h; RTL sign bit one means positive contribution",
+  "initial_state": "Full 3200 spins and 1600 sorted unique seeds, matching Python source algorithm",
+  "bias_placement": "source, no redistribution or replication",
+  "probability_comparison": {
+    "edge": "valid && (random_7bit <= probability_code)",
+    "bias": "random_7bit < probability_code"
+  }
+}

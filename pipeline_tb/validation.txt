@@ -1,0 +1,39 @@
+Local checks, 2026-09-20:
+- Isolated 3x3 source generation for rw and run3x3: PASS.
+- pyslang syntax and elaboration: both test tops, 0 errors, 0 warnings.
+- Bash syntax check: PASS.
+- Original synthesis RTL unchanged.
+Not run: VCS simulation. Simulation PASS must be obtained on the server.
+
+Representative native Chimera MaxCut test:
+- Generator default (448 logical / 512 used physical nodes, 1470 programmed
+  couplings, 57,811 checked transactions, 3x500 sweeps): PASS.
+- Generated schedule fits 24 of 32 hardware stages: PASS.
+- Latest-pipeline problem TB pyslang syntax/elaboration: 0 errors, 0 warnings.
+- Slurm runner Bash syntax: PASS.
+- Not run locally: VCS optimization trajectory and independent output rescoring.
+
+Expanded full regression, 2026-09-23:
+- All seven inherited Chimera MaxCut/SAT input sets generated successfully with
+  one run, two sweeps and N=3; every embedding, certificate and edge address
+  passed generator validation.
+- Isolated source generation for rw and run3x3 still passes after expansion.
+- Python syntax check for prepare/generator/checker: PASS.
+- Bash syntax check for all four submission/job scripts: PASS.
+- Four directed TBs have balanced module/endmodule declarations and distinct
+  PASS markers. Config-boundary timing was updated from N+4 to N+5; the MAC
+  boundary TB now explicitly drives contribution capture before MAC capture.
+- Not run locally: the four new directed VCS simulations or the seven-case VCS
+  trajectories. Use submit_full_regression.sh on the T6 server for final PASS.
+- Fixed the generated-data directory contract: generator, filelist, TB runtime,
+  score checker and runner now all use tb/chimera_pipeline_generated. The job
+  also verifies every required .mem file before compiling and passes DATA_DIR
+  explicitly to the simulator.
+- UART register responses do not imply completion of an asynchronous array
+  configuration request. The rw, run3x3 and UART end-to-end TBs now wait for
+  CFG_BUSY to clear after each transaction; the problem harness already did so.
+- Added a cycle-exact Python oracle path for the latest pipeline model. Local
+  smoke generation for dense_cut_n0024_s101 with one run, four sweeps and
+  majority five produced oracle_score/oracle_cycles/oracle_spins files with the
+  expected 3200-bit spin-vector width. The VCS-side +CHECK_ORACLE comparison
+  must be run on T6 with run_pipeline_oracle_sbatch.sh.
